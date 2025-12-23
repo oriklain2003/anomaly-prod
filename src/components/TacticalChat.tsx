@@ -1,12 +1,12 @@
 import { useState, useRef, useEffect } from 'react';
 import clsx from 'clsx';
-import { Mic, ArrowUp, Plane, MapPin, X, Loader2, Play, Languages } from 'lucide-react';
+import { Mic, Send, Paperclip, Plus, Play } from 'lucide-react';
 import { ChatMessage, type Message } from './ChatMessage';
 import { AlertCard } from './AlertCard';
 import { ReplayModal, type ReplayEvent } from './ReplayModal';
 import type { SelectedFlight } from '../types';
 import { sendChatMessage, analyzeWithAI } from '../api';
-import { getAnomalyReason, getAnomalyScore, getScoreColor } from '../utils/reason';
+import { getAnomalyReason } from '../utils/reason';
 
 type ChatMode = 'current' | 'general';
 type ChatLanguage = 'en' | 'he';
@@ -32,6 +32,8 @@ const TRANSLATIONS = {
     replay: 'Replay',
     flightSelected: (name: string) => `Flight ${name} selected for analysis.`,
     errorMessage: 'Unable to process request. Please try again.',
+    callsign: 'CALLSIGN',
+    route: 'ROUTE',
   },
   he: {
     welcome: 'מערכת ONYX מוכנה. בחר טיסה מפאנל הפעולות או שאל שאלה כללית על נתוני טיסה.',
@@ -48,6 +50,8 @@ const TRANSLATIONS = {
     replay: 'הפעל מחדש',
     flightSelected: (name: string) => `טיסה ${name} נבחרה לניתוח.`,
     errorMessage: 'לא ניתן לעבד את הבקשה. נסה שוב.',
+    callsign: 'אות קריאה',
+    route: 'מסלול',
   },
 };
 
@@ -60,6 +64,17 @@ const getWelcomeMessage = (lang: ChatLanguage): Message => ({
   sender: 'ONYX_AI',
 });
 
+// ONYX Cube Icon SVG
+function OnyxIcon({ className = "w-4 h-4" }: { className?: string }) {
+  return (
+    <svg className={className} fill="none" stroke="currentColor" strokeLinecap="round" strokeLinejoin="round" strokeWidth="2.5" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
+      <path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z" />
+      <polyline points="3.27 6.96 12 12.01 20.73 6.96" />
+      <line x1="12" x2="12" y1="22.08" y2="12" />
+    </svg>
+  );
+}
+
 export function TacticalChat({ selectedFlight }: TacticalChatProps) {
   const [mode, setMode] = useState<ChatMode>('general');
   const [input, setInput] = useState('');
@@ -71,12 +86,6 @@ export function TacticalChat({ selectedFlight }: TacticalChatProps) {
   
   const t = TRANSLATIONS[language];
   const isRTL = language === 'he';
-
-  // Toggle language
-  const toggleLanguage = () => {
-    const newLang = language === 'en' ? 'he' : 'en';
-    setLanguage(newLang);
-  };
 
   // Auto-scroll to bottom when messages change
   useEffect(() => {
@@ -235,79 +244,91 @@ export function TacticalChat({ selectedFlight }: TacticalChatProps) {
     }
   };
 
-  const clearMessages = () => {
-    setMessages([getWelcomeMessage(language)]);
-  };
-
   return (
-    <div className={clsx("flex flex-col h-full", isRTL && "rtl")} dir={isRTL ? 'rtl' : 'ltr'}>
-      {/* Header */}
-      <div className="border-b border-border-dim bg-bg-panel flex flex-col gap-4 p-5">
+    <div className={clsx("flex flex-col h-full glass-panel", isRTL && "rtl")} dir={isRTL ? 'rtl' : 'ltr'}>
+      {/* Compact Header */}
+      <div className="shrink-0 border-b border-white/10 bg-black/20 backdrop-blur-md px-4 py-3">
         {/* Title Row */}
-        <div className="flex items-center justify-between">
-          <div className="flex items-center gap-3">
-            <span className="material-symbols-outlined text-xl text-gray-200">forum</span>
-            <span className="text-sm font-medium text-white tracking-wide">{t.tacticalChat}</span>
-          </div>
+        <div className="flex items-center justify-between mb-3">
           <div className="flex items-center gap-2">
-            {/* Language Toggle Button */}
-            <button
-              onClick={toggleLanguage}
-              className={clsx(
-                "flex items-center gap-1.5 px-2 py-1 rounded text-[10px] font-bold transition-colors",
-                "bg-white/5 border border-white/10 hover:bg-white/10",
-                language === 'he' ? "text-blue-400" : "text-gray-400"
-              )}
-              title={language === 'en' ? 'Switch to Hebrew' : 'החלף לאנגלית'}
-            >
-              <Languages className="w-3.5 h-3.5" />
-              <span>{language === 'en' ? 'עב' : 'EN'}</span>
-            </button>
-            <div className="flex items-center gap-2 px-2 py-1 rounded bg-white/5 border border-white/5">
-              <span className="w-1.5 h-1.5 rounded-full bg-green-500" />
-              <span className="text-[10px] text-gray-300 font-mono font-bold">#OPS-ALPHA</span>
+            {/* ONYX Icon */}
+            <div className="w-7 h-7 flex items-center justify-center text-black bg-white rounded-md shadow-[0_0_15px_rgba(255,255,255,0.2)]">
+              <OnyxIcon className="w-4 h-4" />
             </div>
+            <span className="font-bold text-base text-white">ONYX AI</span>
+            {/* Connected Badge */}
+            <span className="bg-[#00ffa3]/10 text-[#00ffa3] text-[9px] px-2 py-0.5 rounded-full border border-[#00ffa3]/30 font-semibold uppercase tracking-wide">
+              Connected
+            </span>
+          </div>
+          
+          {/* Language Toggle */}
+          <div className="flex items-center bg-black/40 rounded-md p-0.5 border border-white/10">
+            <button
+              onClick={() => setLanguage('en')}
+              className={clsx(
+                "px-2 py-0.5 text-[10px] font-bold rounded transition-all",
+                language === 'en'
+                  ? "bg-white/10 text-white"
+                  : "text-gray-500 hover:text-white"
+              )}
+            >
+              EN
+            </button>
+            <button
+              onClick={() => setLanguage('he')}
+              className={clsx(
+                "px-2 py-0.5 text-[10px] font-medium rounded transition-all",
+                language === 'he'
+                  ? "bg-white/10 text-white"
+                  : "text-gray-500 hover:text-white"
+              )}
+            >
+              עב
+            </button>
           </div>
         </div>
 
-        {/* Mode Toggle */}
-        <div className="flex bg-black rounded-lg p-1 border border-white/5">
+        {/* Mode Tabs with underline style */}
+        <div className="flex items-center gap-6">
           <button
             onClick={() => setMode('current')}
             className={clsx(
-              "flex-1 py-2 rounded-md text-[11px] font-medium transition-all",
+              "pb-2 text-xs font-medium transition-all",
               mode === 'current'
-                ? "bg-[#1e1e1e] text-white shadow-sm border border-white/10 font-bold"
-                : "text-gray-500 hover:text-gray-300 hover:bg-white/5"
+                ? "border-b-2 border-[#63d1eb] text-[#63d1eb]"
+                : "border-b-2 border-transparent text-gray-400 hover:text-white"
             )}
           >
-            {selectedFlight ? `${t.flightPrefix} ${selectedFlight.callsign || selectedFlight.flight_id}` : t.current}
+            {t.current} (נוכחי)
           </button>
           <button
             onClick={() => setMode('general')}
             className={clsx(
-              "flex-1 py-2 rounded-md text-[11px] font-medium transition-all",
+              "pb-2 text-xs font-medium transition-all",
               mode === 'general'
-                ? "bg-[#1e1e1e] text-white shadow-sm border border-white/10 font-bold"
-                : "text-gray-500 hover:text-gray-300 hover:bg-white/5"
+                ? "border-b-2 border-[#63d1eb] text-[#63d1eb]"
+                : "border-b-2 border-transparent text-gray-400 hover:text-white"
             )}
           >
-            {t.general}
+            {t.general} (כללי)
           </button>
         </div>
+      </div>
 
-        {/* Flight Context Card (when in current mode with a selected flight) */}
-        {mode === 'current' && selectedFlight && (
+      {/* Flight Context Card - Split into 2 rows */}
+      {mode === 'current' && selectedFlight && (
+        <div className="shrink-0 px-4 py-3 border-b border-white/5 space-y-2">
           <FlightContextCard 
             flight={selectedFlight} 
             onReplay={() => setShowReplay(true)}
             translations={t}
           />
-        )}
-      </div>
+        </div>
+      )}
 
       {/* Messages Area */}
-      <div className="flex-1 overflow-y-auto p-5 space-y-4 flex flex-col bg-bg-panel relative">
+      <div className="flex-1 overflow-y-auto p-4 space-y-4 no-scrollbar scroll-smooth min-h-0">
         {messages.map((message) => (
           message.role === 'alert' ? (
             <AlertCard
@@ -323,34 +344,35 @@ export function TacticalChat({ selectedFlight }: TacticalChatProps) {
         ))}
         
         {isLoading && (
-          <div className={clsx("flex items-center gap-2 text-gray-500 text-xs", isRTL && "flex-row-reverse")}>
-            <Loader2 className="w-4 h-4 animate-spin" />
-            <span>{t.analyzing}</span>
+          <div className={clsx("flex items-center gap-2", isRTL && "flex-row-reverse")}>
+            <div className="w-7 h-7 rounded-full bg-white text-black flex items-center justify-center shadow-[0_0_15px_rgba(255,255,255,0.3)]">
+              <OnyxIcon className="w-3.5 h-3.5" />
+            </div>
+            <div className="glass-bubble-ai px-3 py-2 rounded-xl">
+              <div className="flex items-center gap-2">
+                <div className="w-1.5 h-1.5 bg-[#63d1eb] rounded-full animate-pulse" />
+                <span className="text-xs text-gray-400">{t.analyzing}</span>
+              </div>
+            </div>
           </div>
         )}
         
         <div ref={messagesEndRef} />
       </div>
 
-      {/* Input Area */}
-      <div className="p-5 pt-0 bg-bg-panel relative">
-        {/* Bottom gradient line */}
-        <div className="absolute bottom-0 left-0 right-0 h-[1px] bg-gradient-to-r from-transparent via-red-900/50 to-transparent" />
-        
-        <div className="relative group">
-          {/* Glow effect on focus */}
-          <div className="absolute -inset-0.5 bg-gradient-to-r from-red-500/10 to-blue-600/10 rounded-xl opacity-0 group-focus-within:opacity-100 transition duration-500 blur" />
-          
-          <div className="relative flex flex-col bg-bg-surface rounded-xl border border-white/10 shadow-inner transition-colors p-2">
-            <input
-              type="text"
+      {/* Input Area - Bigger like before */}
+      <div className="shrink-0 p-4 bg-transparent border-t border-white/5">
+        <div className="glass-input rounded-2xl px-1 py-1 flex flex-col gap-2 relative group transition-all duration-300 shadow-[0_0_50px_rgba(220,38,38,0.15)] focus-within:shadow-[0_0_70px_rgba(220,38,38,0.3)] focus-within:border-red-500/30">
+          <div className="px-4 pt-3">
+            <textarea
               value={input}
               onChange={(e) => setInput(e.target.value)}
               onKeyPress={handleKeyPress}
               disabled={isLoading}
               dir={isRTL ? 'rtl' : 'ltr'}
+              rows={1}
               className={clsx(
-                "w-full bg-transparent border-none focus:ring-0 focus:outline-none text-xs text-white placeholder-gray-600 font-body py-3 px-3 disabled:opacity-50",
+                "bg-transparent border-none text-sm w-full focus:ring-0 focus:outline-none text-white placeholder-gray-500 resize-none h-12 py-2 leading-relaxed",
                 isRTL && "text-right"
               )}
               placeholder={mode === 'current' && selectedFlight 
@@ -358,29 +380,32 @@ export function TacticalChat({ selectedFlight }: TacticalChatProps) {
                 : t.askGeneral
               }
             />
-            
-            <div className={clsx("flex items-center justify-between px-2 pb-1", isRTL && "flex-row-reverse")}>
-              <button 
-                onClick={clearMessages}
-                className="text-gray-500 hover:text-white transition-colors p-1"
-                title="Clear chat"
-              >
-                <X className="h-4 w-4" />
+          </div>
+          <div className={clsx("flex justify-between items-center px-3 pb-2 pt-1 border-t border-white/10 mx-2", isRTL && "flex-row-reverse")}>
+            <div className={clsx("flex items-center gap-1", isRTL && "flex-row-reverse")}>
+              <button className="p-2 text-gray-500 hover:text-white rounded-lg hover:bg-white/10 transition">
+                <Plus className="w-4 h-4" />
               </button>
-              <div className={clsx("flex gap-2", isRTL && "flex-row-reverse")}>
-                <button className="text-gray-500 hover:text-white transition-colors p-1">
-                  <Mic className="h-5 w-5" />
-                </button>
-                <button
-                  onClick={handleSend}
-                  disabled={isLoading || !input.trim()}
-                  className="text-gray-400 hover:text-white transition-colors p-1 disabled:opacity-50"
-                >
-                  <ArrowUp className="h-5 w-5" />
-                </button>
-              </div>
+              <button className="p-2 text-gray-500 hover:text-white rounded-lg hover:bg-white/10 transition">
+                <Paperclip className="w-4 h-4" />
+              </button>
+            </div>
+            <div className={clsx("flex items-center gap-2", isRTL && "flex-row-reverse")}>
+              <button className="p-2 text-gray-500 hover:text-white rounded-lg hover:bg-white/10 transition">
+                <Mic className="w-4 h-4" />
+              </button>
+              <button
+                onClick={handleSend}
+                disabled={isLoading || !input.trim()}
+                className="p-2 bg-white/10 text-white hover:bg-white hover:text-black rounded-lg transition-all duration-300 shadow-[0_0_15px_rgba(255,255,255,0.15)] hover:shadow-[0_0_20px_rgba(255,255,255,0.4)] border border-white/10 disabled:opacity-50 disabled:hover:bg-white/10 disabled:hover:text-white"
+              >
+                <Send className="w-4 h-4 -rotate-45" />
+              </button>
             </div>
           </div>
+        </div>
+        <div className="text-center mt-2">
+          <p className="text-[9px] text-gray-500 font-medium tracking-wide">AI can make mistakes. Verify important information.</p>
         </div>
       </div>
 
@@ -397,7 +422,7 @@ export function TacticalChat({ selectedFlight }: TacticalChatProps) {
   );
 }
 
-// Flight Context Card Component
+// Flight Context Card Component - Split into 2 rows
 interface FlightContextCardProps {
   flight: SelectedFlight;
   onReplay: () => void;
@@ -405,52 +430,53 @@ interface FlightContextCardProps {
 }
 
 function FlightContextCard({ flight, onReplay, translations: t }: FlightContextCardProps) {
-  const score = flight.report ? getAnomalyScore(flight.report) : (flight.anomalyScore || 0);
   const reason = flight.report ? getAnomalyReason(flight.report) : 'N/A';
-  const scoreColor = getScoreColor(score);
 
   return (
-    <div className="bg-black/30 rounded-lg p-3 border border-white/5">
-      <div className="flex items-center justify-between mb-2">
-        <div className="flex items-center gap-2">
-          <Plane className="w-4 h-4 text-blue-400" />
-          <span className="text-sm font-mono font-bold text-white">
-            {flight.callsign || flight.flight_id}
+    <div className="space-y-2">
+      {/* Row 1: Callsign and Route */}
+      <div className="glass-card-enhanced rounded-lg p-2 flex items-center gap-3">
+        {/* Callsign with indicator */}
+        <div className="flex items-center gap-2 px-2.5 py-1 rounded bg-black/30 border border-white/10">
+          <span className="w-1.5 h-1.5 rounded-full bg-[#00ffa3] shadow-[0_0_8px_rgba(0,255,163,0.9)] animate-pulse" />
+          <span className="text-[9px] uppercase tracking-wider text-gray-400 font-bold">{t.callsign}</span>
+          <span className="text-sm font-bold text-white font-mono">
+            {flight.callsign || flight.flight_id.slice(0, 6)}
           </span>
         </div>
-        <span className={clsx("text-sm font-mono font-bold", scoreColor)}>
-          {Math.round(score)}
-        </span>
-      </div>
-      
-      <div className="grid grid-cols-2 gap-2 text-[10px]">
-        <div className="flex items-center gap-1.5">
-          <MapPin className="w-3 h-3 text-green-400" />
-          <span className="text-gray-500">{t.from}</span>
-          <span className="text-gray-300 font-mono">{flight.origin || '---'}</span>
-        </div>
-        <div className="flex items-center gap-1.5">
-          <Plane className="w-3 h-3 text-blue-400" />
-          <span className="text-gray-500">{t.to}</span>
-          <span className="text-gray-300 font-mono">{flight.destination || '---'}</span>
+        
+        {/* Route */}
+        <div className="flex items-center gap-2 flex-1">
+          <span className="text-[9px] uppercase tracking-wider text-gray-500 font-bold">{t.route}</span>
+          <div className="flex items-center gap-1.5 text-xs">
+            <span className="material-symbols-outlined text-[#63d1eb] text-sm">flight_takeoff</span>
+            <span className="font-semibold text-white">{flight.origin || '---'}</span>
+            <span className="material-symbols-outlined text-gray-500 text-[10px]">arrow_forward</span>
+            <span className="font-semibold text-white">{flight.destination || '---'}</span>
+            <span className="material-symbols-outlined text-[#00ffa3] text-sm">flight_land</span>
+          </div>
         </div>
       </div>
-      
+
+      {/* Row 2: Anomaly reason and Replay button (only if there's a reason) */}
       {reason !== 'N/A' && (
-        <div className="mt-2 text-[10px] text-gray-400">
-          <span className="text-gray-500">{t.reason} </span>
-          <span>{reason}</span>
+        <div className="flex items-center gap-2">
+          {/* Anomaly reason */}
+          <div className="flex-1 flex items-center gap-2 bg-red-500/10 border border-red-500/30 px-2.5 py-1.5 rounded-lg text-[10px] text-red-400">
+            <span className="material-symbols-outlined text-sm">warning</span>
+            <span className="truncate">{reason}</span>
+          </div>
+          
+          {/* Replay Button */}
+          <button
+            onClick={onReplay}
+            className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-[#63d1eb]/10 hover:bg-[#63d1eb]/20 border border-[#224752] text-[#63d1eb] transition-all text-xs shrink-0"
+          >
+            <Play className="w-3.5 h-3.5" />
+            <span className="font-semibold">{t.replay}</span>
+          </button>
         </div>
       )}
-
-      {/* Replay Button - smaller */}
-      <button
-        onClick={onReplay}
-        className="mt-2 flex items-center gap-1.5 py-1 px-2.5 rounded bg-cyan-500/10 hover:bg-cyan-500/20 border border-cyan-500/30 text-cyan-400 text-[10px] font-medium transition-colors"
-      >
-        <Play className="w-3 h-3" />
-        {t.replay}
-      </button>
     </div>
   );
 }

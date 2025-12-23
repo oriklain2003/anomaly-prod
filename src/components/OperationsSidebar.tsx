@@ -10,6 +10,7 @@ interface OperationsSidebarProps {
   onFlightSelect: (flight: SelectedFlight) => void;
   selectedDate: Date;
   onDateChange: (date: Date) => void;
+  onNewAnomaly?: (flightId: string) => void;
 }
 
 export function OperationsSidebar({
@@ -19,48 +20,52 @@ export function OperationsSidebar({
   onFlightSelect,
   selectedDate,
   onDateChange,
+  onNewAnomaly,
 }: OperationsSidebarProps) {
   return (
     <>
       {/* Header Section */}
-      <div className="p-5 border-b border-border-dim bg-bg-panel flex flex-col gap-5">
+      <div className="p-5 border-b border-white/5 bg-black/30 backdrop-blur-md flex flex-col gap-5">
         {/* Title */}
         <div className="flex items-center justify-between">
-          <span className="text-xs font-medium text-white tracking-wide">Operations Control</span>
-          <span className="text-[10px] font-mono text-gray-600">#ONYX-01</span>
+          <span className="text-xs font-bold text-white tracking-wider uppercase">Operations Control</span>
+          <span className="text-[10px] font-mono text-gray-500">#ONYX-01</span>
         </div>
 
-        {/* Mode Toggle */}
-        <div className="flex bg-black rounded-lg p-1 border border-white/5">
+        {/* Mode Toggle - Glass Style */}
+        <div className="flex bg-black/50 rounded-xl p-1.5 border border-white/10 backdrop-blur-lg shadow-[inset_0_1px_2px_rgba(0,0,0,0.5)]">
           <button
             onClick={() => onModeChange('history')}
             className={clsx(
-              "flex-1 py-2 rounded-md text-[11px] font-medium transition-all",
+              "flex-1 py-2.5 rounded-lg text-[11px] font-semibold transition-all duration-300 relative overflow-hidden",
               mode === 'history'
-                ? "bg-primary-dark text-blue-50 shadow-sm border border-blue-500/20 font-bold"
-                : "text-gray-500 hover:text-gray-300"
+                ? "bg-[#63d1eb]/15 text-[#63d1eb] border border-[#63d1eb]/50 shadow-[0_0_20px_rgba(99,209,235,0.25),inset_0_0_10px_rgba(99,209,235,0.05)] text-shadow-neon"
+                : "text-gray-500 hover:text-white hover:bg-white/5 border border-transparent"
             )}
           >
-            System Reports
+            {mode === 'history' && (
+              <div className="absolute inset-0 bg-gradient-to-r from-transparent via-[#63d1eb]/10 to-transparent animate-pulse pointer-events-none" />
+            )}
+            <span className="relative z-10">System Reports</span>
           </button>
           <button
             onClick={() => onModeChange('live')}
             className={clsx(
-              "flex-1 py-2 rounded-md text-[11px] font-medium transition-all",
+              "flex-1 py-2.5 rounded-lg text-[11px] font-semibold transition-all duration-300 relative overflow-hidden",
               mode === 'live'
-                ? "bg-primary-dark text-blue-50 shadow-sm border border-blue-500/20 font-bold"
-                : "text-gray-500 hover:text-gray-300"
+                ? "bg-[#63d1eb]/15 text-[#63d1eb] border border-[#63d1eb]/50 shadow-[0_0_20px_rgba(99,209,235,0.25),inset_0_0_10px_rgba(99,209,235,0.05)] text-shadow-neon"
+                : "text-gray-500 hover:text-white hover:bg-white/5 border border-transparent"
             )}
           >
-            Live Feed
+            {mode === 'live' && (
+              <>
+                <div className="absolute inset-0 bg-gradient-to-r from-transparent via-[#63d1eb]/10 to-transparent animate-pulse pointer-events-none" />
+                <span className="absolute right-3 top-1/2 -translate-y-1/2 w-1.5 h-1.5 bg-[#00ffa3] rounded-full shadow-[0_0_10px_rgba(0,255,163,0.8)] animate-pulse" />
+              </>
+            )}
+            <span className="relative z-10">Live Feed</span>
           </button>
         </div>
-
-        {/* Emergency Protocol Button */}
-        <button className="group w-full relative overflow-hidden bg-transparent border border-red-900/40 hover:border-red-500/50 hover:bg-red-950/20 text-red-500 font-medium py-2.5 px-4 rounded-lg transition-all duration-300 flex items-center justify-center gap-2">
-          <span className="material-symbols-outlined text-base">emergency_home</span>
-          <span className="font-mono text-[10px] uppercase tracking-wider">Emergency Protocol</span>
-        </button>
       </div>
 
       {/* Stats Overview */}
@@ -71,15 +76,17 @@ export function OperationsSidebar({
       />
 
       {/* Data Stream Section */}
-      <div className="flex-1 min-h-0 flex flex-col bg-bg-panel">
+      <div className="flex-1 min-h-0 flex flex-col bg-black/20">
         {/* Section Header */}
-        <div className="shrink-0 px-5 py-3 border-b border-border-dim flex justify-between items-center bg-bg-surface/50">
-          <span className="text-[10px] font-mono font-bold text-gray-500 uppercase tracking-widest">
+        <div className="shrink-0 px-5 py-3 border-b border-white/5 flex justify-between items-center bg-black/30 backdrop-blur-sm">
+          <span className="text-[10px] font-mono font-bold text-gray-400 uppercase tracking-widest">
             {mode === 'live' ? 'Active Flights' : 'Detection Log'}
           </span>
           <span className={clsx(
-            "w-1.5 h-1.5 rounded-full animate-pulse",
-            mode === 'live' ? "bg-green-500" : "bg-blue-500"
+            "w-2 h-2 rounded-full shadow-[0_0_10px]",
+            mode === 'live' 
+              ? "bg-[#00ffa3] shadow-[#00ffa3]/80 animate-pulse" 
+              : "bg-[#63d1eb] shadow-[#63d1eb]/80 animate-pulse"
           )} />
         </div>
 
@@ -89,6 +96,7 @@ export function OperationsSidebar({
           selectedFlight={selectedFlight}
           onFlightSelect={onFlightSelect}
           selectedDate={selectedDate}
+          onNewAnomaly={onNewAnomaly}
         />
       </div>
     </>

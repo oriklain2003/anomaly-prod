@@ -1,14 +1,16 @@
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useRef, useState, useCallback } from 'react';
 import maplibregl from 'maplibre-gl';
 import 'maplibre-gl/dist/maplibre-gl.css';
 import type { SelectedFlight, FlightTrack, LearnedLayers, TrackPoint } from '../types';
-import { fetchUnifiedTrack, fetchSystemReportTrack, fetchLearnedLayers, fetchReplayOtherFlight } from '../api';
+import { fetchUnifiedTrack, fetchSystemReportTrack, fetchLearnedLayers, fetchReplayOtherFlight, fetchAllLiveFlights, fetchLiveResearchTrack, type LiveFlightData } from '../api';
 import type { MapLayer } from './MapControls';
 
 interface MapComponentProps {
   onMouseMove?: (coords: { lat: number; lon: number; elv: number }) => void;
   selectedFlight: SelectedFlight | null;
   activeLayers: MapLayer[];
+  mode?: 'live' | 'history';
+  onFlightClick?: (flightId: string, isAnomaly: boolean, callsign?: string) => void;
 }
 
 interface ProximityFlightData {
@@ -17,14 +19,82 @@ interface ProximityFlightData {
   points: TrackPoint[];
 }
 
-export function MapComponent({ onMouseMove, selectedFlight, activeLayers }: MapComponentProps) {
+const LIVE_POLL_INTERVAL = 10000; // 10 seconds
+
+export function MapComponent({ onMouseMove, selectedFlight, activeLayers, mode = 'history', onFlightClick }: MapComponentProps) {
   const mapContainer = useRef<HTMLDivElement>(null);
   const map = useRef<maplibregl.Map | null>(null);
+  const startMarkerRef = useRef<maplibregl.Marker | null>(null);
+  const endMarkerRef = useRef<maplibregl.Marker | null>(null);
   const [flightTrack, setFlightTrack] = useState<FlightTrack | null>(null);
   const [proximityFlights, setProximityFlights] = useState<ProximityFlightData[]>([]);
   const [learnedLayers, setLearnedLayers] = useState<LearnedLayers | null>(null);
+  const [liveFlights, setLiveFlights] = useState<LiveFlightData[]>([]);
   const [isMapReady, setIsMapReady] = useState(false);
   const apiKey = 'r7kaQpfNDVZdaVp23F1r';
+
+  // Create custom marker element for takeoff (green)
+  const createStartMarkerElement = () => {
+    const el = document.createElement('div');
+    el.className = 'custom-marker start-marker';
+    el.innerHTML = `
+      <div style="position: relative; display: flex; align-items: center; justify-content: center;">
+        <div style="position: absolute; width: 40px; height: 40px; background: rgba(16, 185, 129, 0.2); border-radius: 50%; animation: pulse 2s infinite;"></div>
+        <div style="width: 28px; height: 28px; background: linear-gradient(135deg, #10b981 0%, #059669 100%); border-radius: 50%; display: flex; align-items: center; justify-content: center; box-shadow: 0 0 15px rgba(16, 185, 129, 0.6), inset 0 2px 4px rgba(255,255,255,0.3); border: 2px solid rgba(255,255,255,0.3);">
+          <span class="material-symbols-outlined" style="font-size: 16px; color: white; text-shadow: 0 1px 2px rgba(0,0,0,0.3);">flight_takeoff</span>
+        </div>
+      </div>
+    `;
+    return el;
+  };
+
+  // Create custom marker element for landing/current (cyan)
+  const createEndMarkerElement = (callsign?: string) => {
+    const el = document.createElement('div');
+    el.className = 'custom-marker end-marker';
+    el.innerHTML = `
+      <div style="position: relative; display: flex; flex-direction: column; align-items: center;">
+        ${callsign ? `<div style="background: rgba(0,0,0,0.8); color: #63d1eb; padding: 2px 8px; border-radius: 4px; font-size: 11px; font-weight: bold; font-family: monospace; margin-bottom: 4px; border: 1px solid rgba(99, 209, 235, 0.4); box-shadow: 0 0 10px rgba(99, 209, 235, 0.3);">${callsign}</div>` : ''}
+        <div style="position: relative; display: flex; align-items: center; justify-content: center;">
+          <div style="position: absolute; width: 44px; height: 44px; background: rgba(239, 68, 68, 0.2); border-radius: 50%; animation: pulse 2s infinite;"></div>
+          <div style="width: 32px; height: 32px; background: linear-gradient(135deg, #ef4444 0%, #dc2626 100%); border-radius: 50%; display: flex; align-items: center; justify-content: center; box-shadow: 0 0 15px rgba(239, 68, 68, 0.6), inset 0 2px 4px rgba(255,255,255,0.3); border: 2px solid rgba(255,255,255,0.3);">
+            <span class="material-symbols-outlined" style="font-size: 18px; color: white; text-shadow: 0 1px 2px rgba(0,0,0,0.3);">flight_land</span>
+          </div>
+        </div>
+      </div>
+    `;
+    return el;
+  };
+
+  // Fetch live flights when in live mode
+  const fetchLiveFlightsData = useCallback(async () => {
+    if (mode !== 'live') return;
+    
+    try {
+      const response = await fetchAllLiveFlights();
+      setLiveFlights(response.flights);
+    } catch (error) {
+      console.warn('Failed to fetch live flights:', error);
+    }
+  }, [mode]);
+
+  // Poll for live flights
+  useEffect(() => {
+    if (mode !== 'live') {
+      setLiveFlights([]);
+      return;
+    }
+
+    // Initial fetch
+    fetchLiveFlightsData();
+
+    // Set up polling
+    const intervalId = setInterval(fetchLiveFlightsData, LIVE_POLL_INTERVAL);
+
+    return () => {
+      clearInterval(intervalId);
+    };
+  }, [mode, fetchLiveFlightsData]);
 
   // Fetch learned layers on mount
   useEffect(() => {
@@ -54,10 +124,22 @@ export function MapComponent({ onMouseMove, selectedFlight, activeLayers }: MapC
     const loadTrack = async () => {
       try {
         let track: FlightTrack;
-        try {
-          track = await fetchUnifiedTrack(selectedFlight.flight_id);
-        } catch {
-          track = await fetchSystemReportTrack(selectedFlight.flight_id);
+        
+        if (mode === 'live') {
+          // In live mode, prefer live research track from live_research.db
+          try {
+            track = await fetchLiveResearchTrack(selectedFlight.flight_id);
+          } catch {
+            // Fall back to unified track
+            track = await fetchUnifiedTrack(selectedFlight.flight_id);
+          }
+        } else {
+          // In history mode, use unified track with system report fallback
+          try {
+            track = await fetchUnifiedTrack(selectedFlight.flight_id);
+          } catch {
+            track = await fetchSystemReportTrack(selectedFlight.flight_id);
+          }
         }
         
         if (mounted && track.points.length > 0) {
@@ -71,12 +153,22 @@ export function MapComponent({ onMouseMove, selectedFlight, activeLayers }: MapC
       }
     };
 
+    // Initial load
     loadTrack();
+
+    // In live mode, periodically refresh the track for the selected flight
+    let refreshInterval: number | null = null;
+    if (mode === 'live') {
+      refreshInterval = window.setInterval(loadTrack, LIVE_POLL_INTERVAL);
+    }
 
     return () => {
       mounted = false;
+      if (refreshInterval) {
+        clearInterval(refreshInterval);
+      }
     };
-  }, [selectedFlight?.flight_id]);
+  }, [selectedFlight?.flight_id, mode]);
 
   // Fetch proximity flight tracks when there's a proximity rule
   useEffect(() => {
@@ -268,6 +360,17 @@ export function MapComponent({ onMouseMove, selectedFlight, activeLayers }: MapC
         data: { type: 'FeatureCollection', features: [] },
       });
 
+      // Live flights sources
+      map.current.addSource('live-flights-normal', {
+        type: 'geojson',
+        data: { type: 'FeatureCollection', features: [] },
+      });
+
+      map.current.addSource('live-flights-anomaly', {
+        type: 'geojson',
+        data: { type: 'FeatureCollection', features: [] },
+      });
+
       // Flight track glow layer
       map.current.addLayer({
         id: 'flight-track-glow',
@@ -315,31 +418,81 @@ export function MapComponent({ onMouseMove, selectedFlight, activeLayers }: MapC
         },
       });
 
-      // Start marker - green circle
+      // Start marker outer glow (green pulse effect)
+      map.current.addLayer({
+        id: 'start-marker-glow',
+        type: 'circle',
+        source: 'start-marker',
+        paint: {
+          'circle-radius': 18,
+          'circle-color': '#10b981',
+          'circle-opacity': 0.25,
+          'circle-blur': 0.8,
+        },
+      });
+
+      // Start marker - green circle (takeoff)
       map.current.addLayer({
         id: 'start-marker-circle',
         type: 'circle',
         source: 'start-marker',
         paint: {
-          'circle-radius': 6,
-          'circle-color': '#22c55e',
+          'circle-radius': 10,
+          'circle-color': '#10b981',
           'circle-opacity': 1,
-          'circle-stroke-width': 2,
-          'circle-stroke-color': '#ffffff',
+          'circle-stroke-width': 3,
+          'circle-stroke-color': 'rgba(16, 185, 129, 0.5)',
         },
       });
 
-      // End marker - red circle (end of route)
+      // Start marker inner dot
+      map.current.addLayer({
+        id: 'start-marker-inner',
+        type: 'circle',
+        source: 'start-marker',
+        paint: {
+          'circle-radius': 4,
+          'circle-color': '#ffffff',
+          'circle-opacity': 1,
+        },
+      });
+
+      // End marker outer glow (cyan pulse effect)
+      map.current.addLayer({
+        id: 'end-marker-glow',
+        type: 'circle',
+        source: 'end-marker',
+        paint: {
+          'circle-radius': 22,
+          'circle-color': '#63d1eb',
+          'circle-opacity': 0.3,
+          'circle-blur': 0.8,
+        },
+      });
+
+      // End marker - cyan circle (current position / landing)
       map.current.addLayer({
         id: 'end-marker-circle',
         type: 'circle',
         source: 'end-marker',
         paint: {
-          'circle-radius': 7,
-          'circle-color': '#ef4444',
+          'circle-radius': 12,
+          'circle-color': '#63d1eb',
           'circle-opacity': 1,
-          'circle-stroke-width': 2,
-          'circle-stroke-color': '#ffffff',
+          'circle-stroke-width': 3,
+          'circle-stroke-color': 'rgba(99, 209, 235, 0.5)',
+        },
+      });
+
+      // End marker inner dot
+      map.current.addLayer({
+        id: 'end-marker-inner',
+        type: 'circle',
+        source: 'end-marker',
+        paint: {
+          'circle-radius': 5,
+          'circle-color': '#ffffff',
+          'circle-opacity': 1,
         },
       });
 
@@ -350,13 +503,14 @@ export function MapComponent({ onMouseMove, selectedFlight, activeLayers }: MapC
         source: 'end-marker',
         layout: {
           'text-field': ['get', 'callsign'],
-          'text-offset': [0, -1.5],
-          'text-size': 11,
+          'text-offset': [0, -2],
+          'text-size': 12,
+          'text-font': ['Open Sans Bold', 'Arial Unicode MS Bold'],
           'text-anchor': 'bottom',
           'text-allow-overlap': true,
         },
         paint: {
-          'text-color': '#ffffff',
+          'text-color': '#63d1eb',
           'text-halo-color': '#000000',
           'text-halo-width': 2,
         },
@@ -412,6 +566,85 @@ export function MapComponent({ onMouseMove, selectedFlight, activeLayers }: MapC
         },
       });
 
+      // Live flights - normal (cyan dots)
+      map.current.addLayer({
+        id: 'live-flights-normal-circle',
+        type: 'circle',
+        source: 'live-flights-normal',
+        paint: {
+          'circle-radius': 5,
+          'circle-color': '#06b6d4',
+          'circle-opacity': 0.8,
+          'circle-stroke-width': 1,
+          'circle-stroke-color': '#ffffff',
+        },
+      });
+
+      // Live flights - normal label (always visible above flights)
+      map.current.addLayer({
+        id: 'live-flights-normal-label',
+        type: 'symbol',
+        source: 'live-flights-normal',
+        layout: {
+          'text-field': ['coalesce', ['get', 'callsign'], ['get', 'flight_id']],
+          'text-offset': [0, -1.2],
+          'text-size': 10,
+          'text-anchor': 'bottom',
+          'text-allow-overlap': true,
+        },
+        paint: {
+          'text-color': '#06b6d4',
+          'text-halo-color': '#000000',
+          'text-halo-width': 2,
+        },
+      });
+
+      // Live flights - anomaly (red triangle icons with rotation)
+      map.current.addLayer({
+        id: 'live-flights-anomaly-circle',
+        type: 'circle',
+        source: 'live-flights-anomaly',
+        paint: {
+          'circle-radius': 8,
+          'circle-color': '#ef4444',
+          'circle-opacity': 0.9,
+          'circle-stroke-width': 2,
+          'circle-stroke-color': '#ffffff',
+        },
+      });
+
+      // Live flights - anomaly glow
+      map.current.addLayer({
+        id: 'live-flights-anomaly-glow',
+        type: 'circle',
+        source: 'live-flights-anomaly',
+        paint: {
+          'circle-radius': 16,
+          'circle-color': '#ef4444',
+          'circle-opacity': 0.3,
+          'circle-blur': 1,
+        },
+      }, 'live-flights-anomaly-circle');
+
+      // Live flights - anomaly label (always visible above flights)
+      map.current.addLayer({
+        id: 'live-flights-anomaly-label',
+        type: 'symbol',
+        source: 'live-flights-anomaly',
+        layout: {
+          'text-field': ['coalesce', ['get', 'callsign'], ['get', 'flight_id']],
+          'text-offset': [0, -1.5],
+          'text-size': 11,
+          'text-anchor': 'bottom',
+          'text-allow-overlap': true,
+        },
+        paint: {
+          'text-color': '#ef4444',
+          'text-halo-color': '#000000',
+          'text-halo-width': 2,
+        },
+      });
+
       setIsMapReady(true);
     });
 
@@ -424,6 +657,66 @@ export function MapComponent({ onMouseMove, selectedFlight, activeLayers }: MapC
           elv: 890,
         });
       }
+    });
+
+    // Click handlers for live flights - Normal flights
+    map.current.on('click', 'live-flights-normal-circle', (e) => {
+      if (!onFlightClick || !e.features?.length) return;
+      const feature = e.features[0];
+      const flightId = feature.properties?.flight_id;
+      const callsign = feature.properties?.callsign;
+      if (flightId) {
+        onFlightClick(flightId, false, callsign);
+      }
+    });
+
+    // Click handlers for live flights - Anomaly flights
+    map.current.on('click', 'live-flights-anomaly-circle', (e) => {
+      if (!onFlightClick || !e.features?.length) return;
+      const feature = e.features[0];
+      const flightId = feature.properties?.flight_id;
+      const callsign = feature.properties?.callsign;
+      if (flightId) {
+        onFlightClick(flightId, true, callsign);
+      }
+    });
+
+    // Click handler for normal flight labels too
+    map.current.on('click', 'live-flights-normal-label', (e) => {
+      if (!onFlightClick || !e.features?.length) return;
+      const feature = e.features[0];
+      const flightId = feature.properties?.flight_id;
+      const callsign = feature.properties?.callsign;
+      if (flightId) {
+        onFlightClick(flightId, false, callsign);
+      }
+    });
+
+    // Click handler for anomaly flight labels too
+    map.current.on('click', 'live-flights-anomaly-label', (e) => {
+      if (!onFlightClick || !e.features?.length) return;
+      const feature = e.features[0];
+      const flightId = feature.properties?.flight_id;
+      const callsign = feature.properties?.callsign;
+      if (flightId) {
+        onFlightClick(flightId, true, callsign);
+      }
+    });
+
+    // Change cursor on hover for live flights
+    const liveLayers = [
+      'live-flights-normal-circle', 
+      'live-flights-normal-label',
+      'live-flights-anomaly-circle',
+      'live-flights-anomaly-label'
+    ];
+    liveLayers.forEach(layer => {
+      map.current!.on('mouseenter', layer, () => {
+        if (map.current) map.current.getCanvas().style.cursor = 'pointer';
+      });
+      map.current!.on('mouseleave', layer, () => {
+        if (map.current) map.current.getCanvas().style.cursor = '';
+      });
     });
 
     return () => {
@@ -442,9 +735,22 @@ export function MapComponent({ onMouseMove, selectedFlight, activeLayers }: MapC
     const trackVisible = activeLayers.includes('track');
     map.current.setLayoutProperty('flight-track-glow', 'visibility', trackVisible ? 'visible' : 'none');
     map.current.setLayoutProperty('flight-track-line', 'visibility', trackVisible ? 'visible' : 'none');
-    map.current.setLayoutProperty('start-marker-circle', 'visibility', trackVisible ? 'visible' : 'none');
-    map.current.setLayoutProperty('end-marker-circle', 'visibility', trackVisible ? 'visible' : 'none');
-    map.current.setLayoutProperty('end-marker-label', 'visibility', trackVisible ? 'visible' : 'none');
+    // Hide circle marker layers - we use custom HTML markers instead
+    map.current.setLayoutProperty('start-marker-glow', 'visibility', 'none');
+    map.current.setLayoutProperty('start-marker-circle', 'visibility', 'none');
+    map.current.setLayoutProperty('start-marker-inner', 'visibility', 'none');
+    map.current.setLayoutProperty('end-marker-glow', 'visibility', 'none');
+    map.current.setLayoutProperty('end-marker-circle', 'visibility', 'none');
+    map.current.setLayoutProperty('end-marker-inner', 'visibility', 'none');
+    map.current.setLayoutProperty('end-marker-label', 'visibility', 'none');
+    
+    // Toggle custom HTML markers visibility based on track layer
+    if (startMarkerRef.current) {
+      startMarkerRef.current.getElement().style.display = trackVisible ? 'block' : 'none';
+    }
+    if (endMarkerRef.current) {
+      endMarkerRef.current.getElement().style.display = trackVisible ? 'block' : 'none';
+    }
     
     // Proximity tracks follow the main track visibility
     map.current.setLayoutProperty('proximity-tracks-line', 'visibility', trackVisible ? 'visible' : 'none');
@@ -553,12 +859,20 @@ export function MapComponent({ onMouseMove, selectedFlight, activeLayers }: MapC
 
     const trackSource = map.current.getSource('flight-track') as maplibregl.GeoJSONSource;
     const anomalySource = map.current.getSource('anomaly-points') as maplibregl.GeoJSONSource;
-    const startSource = map.current.getSource('start-marker') as maplibregl.GeoJSONSource;
-    const endSource = map.current.getSource('end-marker') as maplibregl.GeoJSONSource;
     const proximityTracksSource = map.current.getSource('proximity-tracks') as maplibregl.GeoJSONSource;
     const proximityEndSource = map.current.getSource('proximity-end-markers') as maplibregl.GeoJSONSource;
 
-    if (!trackSource || !anomalySource || !startSource || !endSource || !proximityTracksSource || !proximityEndSource) return;
+    if (!trackSource || !anomalySource || !proximityTracksSource || !proximityEndSource) return;
+
+    // Clean up existing custom markers
+    if (startMarkerRef.current) {
+      startMarkerRef.current.remove();
+      startMarkerRef.current = null;
+    }
+    if (endMarkerRef.current) {
+      endMarkerRef.current.remove();
+      endMarkerRef.current = null;
+    }
 
     if (flightTrack && flightTrack.points.length > 0) {
       // Create line from track points
@@ -573,29 +887,27 @@ export function MapComponent({ onMouseMove, selectedFlight, activeLayers }: MapC
         },
       });
 
-      // Start marker (first point - green)
+      // Start marker (first point - green takeoff icon)
       const firstPoint = flightTrack.points[0];
-      startSource.setData({
-        type: 'Feature',
-        properties: {},
-        geometry: {
-          type: 'Point',
-          coordinates: [firstPoint.lon, firstPoint.lat],
-        },
-      });
+      startMarkerRef.current = new maplibregl.Marker({
+        element: createStartMarkerElement(),
+        anchor: 'center',
+      })
+        .setLngLat([firstPoint.lon, firstPoint.lat])
+        .addTo(map.current!);
 
-      // End marker (last point - red dot with label)
-      const lastPoint = flightTrack.points[flightTrack.points.length - 1];
-      endSource.setData({
-        type: 'Feature',
-        properties: {
-          callsign: selectedFlight?.callsign || selectedFlight?.flight_id,
-        },
-        geometry: {
-          type: 'Point',
-          coordinates: [lastPoint.lon, lastPoint.lat],
-        },
-      });
+      // End marker (last point - red landing icon with label)
+      // In live mode, don't show end marker since flight is still moving
+      if (mode !== 'live') {
+        const lastPoint = flightTrack.points[flightTrack.points.length - 1];
+        const callsign = selectedFlight?.callsign || selectedFlight?.flight_id;
+        endMarkerRef.current = new maplibregl.Marker({
+          element: createEndMarkerElement(callsign),
+          anchor: 'bottom',
+        })
+          .setLngLat([lastPoint.lon, lastPoint.lat])
+          .addTo(map.current!);
+      }
 
       // Red anomaly points - ONLY from rule-based detections (layer_1_rules), NOT ML models
       const anomalyFeatures: GeoJSON.Feature[] = [];
@@ -718,12 +1030,75 @@ export function MapComponent({ onMouseMove, selectedFlight, activeLayers }: MapC
       // Clear all layers
       trackSource.setData({ type: 'FeatureCollection', features: [] });
       anomalySource.setData({ type: 'FeatureCollection', features: [] });
-      startSource.setData({ type: 'FeatureCollection', features: [] });
-      endSource.setData({ type: 'FeatureCollection', features: [] });
       proximityTracksSource.setData({ type: 'FeatureCollection', features: [] });
       proximityEndSource.setData({ type: 'FeatureCollection', features: [] });
     }
-  }, [flightTrack, selectedFlight?.report, proximityFlights, isMapReady]);
+  }, [flightTrack, selectedFlight?.report, selectedFlight?.callsign, selectedFlight?.flight_id, proximityFlights, isMapReady, mode]);
+
+  // Update live flights display
+  useEffect(() => {
+    if (!map.current || !isMapReady) return;
+
+    const normalSource = map.current.getSource('live-flights-normal') as maplibregl.GeoJSONSource;
+    const anomalySource = map.current.getSource('live-flights-anomaly') as maplibregl.GeoJSONSource;
+
+    if (!normalSource || !anomalySource) return;
+
+    // Filter flights - exclude the selected flight if any
+    const selectedId = selectedFlight?.flight_id;
+    const filteredFlights = liveFlights.filter(f => f.flight_id !== selectedId);
+
+    // Split into normal and anomaly flights
+    const normalFlights = filteredFlights.filter(f => !f.is_anomaly);
+    const anomalyFlights = filteredFlights.filter(f => f.is_anomaly);
+
+    // Create normal flight features (cyan dots)
+    const normalFeatures: GeoJSON.Feature[] = normalFlights.map(f => ({
+      type: 'Feature',
+      properties: {
+        flight_id: f.flight_id,
+        callsign: f.callsign || f.flight_id,
+        heading: f.heading || 0,
+      },
+      geometry: {
+        type: 'Point',
+        coordinates: [f.lon, f.lat],
+      },
+    }));
+
+    // Create anomaly flight features (red icons with labels)
+    const anomalyFeatures: GeoJSON.Feature[] = anomalyFlights.map(f => ({
+      type: 'Feature',
+      properties: {
+        flight_id: f.flight_id,
+        callsign: f.callsign || f.flight_id,
+        heading: f.heading || 0,
+        severity: f.severity || 0,
+      },
+      geometry: {
+        type: 'Point',
+        coordinates: [f.lon, f.lat],
+      },
+    }));
+
+    normalSource.setData({
+      type: 'FeatureCollection',
+      features: normalFeatures,
+    });
+
+    anomalySource.setData({
+      type: 'FeatureCollection',
+      features: anomalyFeatures,
+    });
+
+    // Set visibility based on mode
+    const isLive = mode === 'live';
+    map.current.setLayoutProperty('live-flights-normal-circle', 'visibility', isLive ? 'visible' : 'none');
+    map.current.setLayoutProperty('live-flights-normal-label', 'visibility', isLive ? 'visible' : 'none');
+    map.current.setLayoutProperty('live-flights-anomaly-circle', 'visibility', isLive ? 'visible' : 'none');
+    map.current.setLayoutProperty('live-flights-anomaly-glow', 'visibility', isLive ? 'visible' : 'none');
+    map.current.setLayoutProperty('live-flights-anomaly-label', 'visibility', isLive ? 'visible' : 'none');
+  }, [liveFlights, selectedFlight?.flight_id, mode, isMapReady]);
 
   return (
     <div ref={mapContainer} className="w-full h-full" />

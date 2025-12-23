@@ -6,9 +6,11 @@ import type { SelectedFlight } from '../types';
 
 interface MapAreaProps {
   selectedFlight: SelectedFlight | null;
+  mode?: 'live' | 'history';
+  onFlightClick?: (flightId: string, isAnomaly: boolean, callsign?: string) => void;
 }
 
-export function MapArea({ selectedFlight }: MapAreaProps) {
+export function MapArea({ selectedFlight, mode = 'history', onFlightClick }: MapAreaProps) {
   const [mouseCoords, setMouseCoords] = useState({ lat: 32.4412, lon: 35.8912, elv: 890 });
   const [activeLayers, setActiveLayers] = useState<MapLayer[]>(['track', 'anomalies']);
   const [showLayersDropdown, setShowLayersDropdown] = useState(false);
@@ -37,14 +39,19 @@ export function MapArea({ selectedFlight }: MapAreaProps) {
           onMouseMove={setMouseCoords} 
           selectedFlight={selectedFlight}
           activeLayers={activeLayers}
+          mode={mode}
+          onFlightClick={onFlightClick}
         />
         
         {/* Grid Overlay */}
         <div className="absolute inset-0 map-grid opacity-10 pointer-events-none" />
+        
+        {/* Vignette effect */}
+        <div className="absolute inset-0 bg-[radial-gradient(circle_at_50%_50%,rgba(11,13,16,0)_30%,rgba(8,9,11,0.7)_100%)] pointer-events-none" />
       </div>
 
       {/* Map Controls - Top Right */}
-      <div className="absolute top-6 right-6 z-20 flex flex-col gap-3">
+      <div className="absolute top-4 right-4 z-20 flex flex-col gap-2">
         <MapControls 
           activeLayers={activeLayers}
           onLayerToggle={toggleLayer}
@@ -55,89 +62,106 @@ export function MapArea({ selectedFlight }: MapAreaProps) {
         />
         
         {/* Separator */}
-        <div className="h-px bg-white/5 w-full my-1" />
+        <div className="h-2" />
         
         {/* Zoom Controls */}
-        <div className="flex gap-1 justify-end">
-          <button className="p-2 bg-gray-900/90 backdrop-blur-md border border-white/10 rounded-md text-gray-400 hover:text-white hover:bg-gray-800 transition-colors shadow-lg">
-            <Plus className="h-[18px] w-[18px]" />
+        <div className="flex flex-col gap-0.5">
+          <button className="liquid-glass w-8 h-8 flex items-center justify-center rounded-t-md text-gray-300 hover:text-white transition-colors border-b-0">
+            <Plus className="w-4 h-4" />
           </button>
-          <button className="p-2 bg-gray-900/90 backdrop-blur-md border border-white/10 rounded-md text-gray-400 hover:text-white hover:bg-gray-800 transition-colors shadow-lg">
-            <Minus className="h-[18px] w-[18px]" />
+          <button className="liquid-glass w-8 h-8 flex items-center justify-center rounded-b-md text-gray-300 hover:text-white transition-colors">
+            <Minus className="w-4 h-4" />
           </button>
         </div>
       </div>
 
-      {/* Selected Flight Info Bar (when a flight is selected) */}
+      {/* Compact Flight Info Card (Top Left) */}
       {selectedFlight && (
-        <div className="absolute top-6 left-6 z-20">
-          <div className="bg-black/90 backdrop-blur-md border border-primary/30 rounded-lg px-4 py-3 shadow-lg min-w-[200px]">
-            <div className="flex items-center gap-2 mb-2">
-              <span className="material-symbols-outlined text-primary text-lg">flight</span>
-              <span className="text-sm font-mono font-bold text-white">
-                {selectedFlight.callsign || selectedFlight.flight_id}
-              </span>
+        <div className="absolute top-4 left-4 z-20">
+          <div className="liquid-glass rounded-lg p-4 w-64 text-xs shadow-[0_0_20px_rgba(99,209,235,0.4),0_0_40px_rgba(99,209,235,0.2)] border border-[#63d1eb]/30">
+            {/* Header */}
+            <div className="flex items-center gap-3 mb-3">
+              <div className="bg-[#63d1eb]/10 border border-[#63d1eb]/40 p-2 rounded-md text-[#63d1eb]">
+                <span className="material-symbols-outlined text-lg">flight</span>
+              </div>
+              <div>
+                <h2 className="text-lg font-bold text-white font-mono">
+                  {selectedFlight.callsign || selectedFlight.flight_id.slice(0, 7)}
+                </h2>
+                <div className="flex items-center gap-1.5 text-[10px] mt-0.5">
+                  <span className="bg-emerald-500/10 text-emerald-400 px-1.5 py-0.5 rounded border border-emerald-500/40">
+                    ACTIVE
+                  </span>
+                  <span className="text-gray-400">•</span>
+                  <span className="text-gray-300">B738</span>
+                </div>
+              </div>
             </div>
-            <div className="grid grid-cols-2 gap-x-4 gap-y-1 text-[10px]">
+            
+            {/* Origin / Destination */}
+            <div className="grid grid-cols-2 gap-3 border-t border-white/10 pt-3">
               <div>
-                <span className="text-gray-500">From:</span>
-                <span className="text-gray-300 ml-1 font-mono">{selectedFlight.origin || '---'}</span>
+                <p className="text-[9px] text-[#63d1eb]/70 font-mono uppercase tracking-wider">Origin</p>
+                <p className="text-sm font-bold text-white">{selectedFlight.origin || '---'}</p>
+                <p className="text-[10px] text-gray-400 truncate">
+                  {selectedFlight.origin === 'LLBG' ? 'Ben Gurion' : 
+                   selectedFlight.origin === 'LCPH' ? 'Paphos Intl' : 
+                   selectedFlight.origin === 'LCLK' ? 'Larnaca' : 'Unknown'}
+                </p>
               </div>
-              <div>
-                <span className="text-gray-500">To:</span>
-                <span className="text-gray-300 ml-1 font-mono">{selectedFlight.destination || '---'}</span>
+              <div className="text-right">
+                <p className="text-[9px] text-[#63d1eb]/70 font-mono uppercase tracking-wider">Dest</p>
+                <p className="text-sm font-bold text-white">{selectedFlight.destination || '---'}</p>
+                <p className="text-[10px] text-gray-400 truncate">
+                  {selectedFlight.destination === 'LLBG' ? 'Ben Gurion' : 
+                   selectedFlight.destination === 'LCPH' ? 'Paphos Intl' : 
+                   selectedFlight.destination === 'LCLK' ? 'Larnaca' : 'Unknown'}
+                </p>
               </div>
-              {selectedFlight.status && (
-                <>
-                  <div>
-                    <span className="text-gray-500">Alt:</span>
-                    <span className="text-cyan-400 ml-1 font-mono">{selectedFlight.status.altitude_ft?.toLocaleString() || '---'} ft</span>
-                  </div>
-                  <div>
-                    <span className="text-gray-500">Spd:</span>
-                    <span className="text-yellow-400 ml-1 font-mono">{selectedFlight.status.speed_kts || '---'} kts</span>
-                  </div>
-                </>
-              )}
+            </div>
+            
+            {/* Flight stats */}
+            <div className="mt-3 pt-2 border-t border-white/10 flex justify-between items-center text-[10px] font-mono text-gray-300">
+              <span>ALT: <span className="text-[#63d1eb]">
+                {selectedFlight.status?.altitude_ft?.toLocaleString() || '32,000'}ft
+              </span></span>
+              <span>SPD: <span className="text-[#63d1eb]">
+                {selectedFlight.status?.speed_kts || '445'}kts
+              </span></span>
             </div>
           </div>
         </div>
       )}
 
-      {/* Bottom Info Bar - Coordinates */}
-      <div className="absolute bottom-6 left-6 font-mono text-[10px] text-gray-500 flex items-center gap-4 bg-black/80 p-2 px-4 rounded-full backdrop-blur-md border border-white/10 shadow-lg">
-        <span className="text-gray-400 font-bold">MAP DATA</span>
-        <span className="w-px h-3 bg-white/10" />
-        <span className="text-gray-400">LAT: {mouseCoords.lat.toFixed(4)} N</span>
-        <span className="text-gray-400">LON: {mouseCoords.lon.toFixed(4)} E</span>
-        <span className="text-gray-400">ELV: {mouseCoords.elv}m</span>
+      {/* Bottom Info Bar - Coordinates (Left) */}
+      <div className="absolute bottom-4 left-4 z-20">
+        <div className="liquid-glass rounded-full px-4 py-2 flex items-center space-x-4 text-[10px] font-mono text-gray-300">
+          <span className="text-white font-bold border-r border-white/20 pr-3 tracking-widest">MAP DATA</span>
+          <span className="tabular-nums">LAT: <span className="text-[#63d1eb]">{mouseCoords.lat.toFixed(4)} N</span></span>
+          <span className="tabular-nums">LON: <span className="text-[#63d1eb]">{mouseCoords.lon.toFixed(4)} E</span></span>
+          <span className="tabular-nums">ELV: <span className="text-[#63d1eb]">{mouseCoords.elv}m</span></span>
+        </div>
       </div>
 
       {/* Bottom Legend - Right */}
-      <div className="absolute bottom-6 right-6 z-20">
-        <div className="bg-black/80 backdrop-blur-md border border-white/10 px-4 py-2 rounded-full shadow-lg flex gap-4">
+      <div className="absolute bottom-4 right-4 z-20">
+        <div className="liquid-glass rounded-full px-4 py-2 flex items-center space-x-4 text-[10px] font-medium text-gray-300">
           {activeLayers.includes('anomalies') && (
-            <div className="flex items-center gap-2 text-[10px] text-gray-400">
-              <div className="w-2 h-2 rounded-full bg-red-500 shadow-[0_0_5px_rgba(239,68,68,0.5)]" />
+            <div className="flex items-center space-x-1.5">
+              <span className="w-2 h-2 rounded-full bg-red-500 shadow-[0_0_6px_rgba(239,68,68,0.8)]" />
               <span>Anomaly</span>
             </div>
           )}
           {activeLayers.includes('track') && (
-            <div className="flex items-center gap-2 text-[10px] text-gray-400">
-              <div className="w-2 h-2 rounded-full bg-cyan-500 shadow-[0_0_5px_rgba(6,182,212,0.5)]" />
+            <div className="flex items-center space-x-1.5">
+              <span className="w-2 h-2 rounded-full bg-[#63d1eb] shadow-[0_0_6px_rgba(99,209,235,0.8)]" />
               <span>Track</span>
             </div>
           )}
           {activeLayers.includes('paths') && (
-            <div className="flex items-center gap-2 text-[10px] text-gray-400">
-              <div className="w-2 h-2 rounded-full bg-green-500" />
-              <span>Paths</span>
-            </div>
-          )}
-          {activeLayers.includes('turns') && (
-            <div className="flex items-center gap-2 text-[10px] text-gray-400">
-              <div className="w-2 h-2 rounded-full bg-orange-500" />
-              <span>Turns</span>
+            <div className="flex items-center space-x-1.5">
+              <span className="w-2 h-2 rounded-full bg-emerald-500 shadow-[0_0_6px_rgba(16,185,129,0.8)]" />
+              <span>Safe</span>
             </div>
           )}
         </div>

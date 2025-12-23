@@ -1,5 +1,4 @@
 import { useEffect, useState } from 'react';
-import { Plane, AlertTriangle, RotateCcw, Radio, CornerDownRight, TrendingUp } from 'lucide-react';
 import { fetchStatsOverview, fetchTaggedStatsOverview } from '../api';
 import { DatePicker } from './DatePicker';
 import type { OverviewStats } from '../types';
@@ -13,8 +12,10 @@ interface StatsCardProps {
 interface StatItem {
   label: string;
   value: number | string;
-  icon: React.ReactNode;
+  icon: string;  // Material icon name
   color: string;
+  bgColor: string;
+  glowColor: string;
 }
 
 // Mock stats for fallback
@@ -88,63 +89,80 @@ export function StatsCard({ mode, selectedDate, onDateChange }: StatsCardProps) 
     {
       label: 'Flights',
       value: stats.total_flights,
-      icon: <Plane className="w-3.5 h-3.5" />,
-      color: 'text-blue-400',
+      icon: 'flight',
+      color: 'text-[#63d1eb]',
+      bgColor: 'bg-[#63d1eb]/10',
+      glowColor: 'shadow-[0_0_15px_rgba(99,209,235,0.3)]',
     },
     {
       label: 'Anomalies',
       value: stats.total_anomalies,
-      icon: <AlertTriangle className="w-3.5 h-3.5" />,
+      icon: 'warning',
       color: 'text-orange-400',
+      bgColor: 'bg-orange-500/10',
+      glowColor: 'shadow-[0_0_15px_rgba(251,146,60,0.3)]',
     },
     {
       label: 'Go-Around',
       value: stats.go_arounds,
-      icon: <RotateCcw className="w-3.5 h-3.5" />,
+      icon: '360',
       color: 'text-yellow-400',
+      bgColor: 'bg-yellow-500/10',
+      glowColor: 'shadow-[0_0_15px_rgba(250,204,21,0.3)]',
     },
     {
       label: 'Emergency',
       value: stats.emergency_codes,
-      icon: <Radio className="w-3.5 h-3.5" />,
+      icon: 'crisis_alert',
       color: 'text-red-400',
+      bgColor: 'bg-red-500/10',
+      glowColor: 'shadow-[0_0_15px_rgba(248,113,113,0.3)]',
     },
     {
       label: 'Holding',
       value: stats.holding_patterns,
-      icon: <CornerDownRight className="w-3.5 h-3.5" />,
-      color: 'text-cyan-400',
+      icon: 'sync',
+      color: 'text-purple-400',
+      bgColor: 'bg-purple-500/10',
+      glowColor: 'shadow-[0_0_15px_rgba(192,132,252,0.3)]',
     },
     {
       label: 'Proximity',
       value: stats.near_miss,
-      icon: <TrendingUp className="w-3.5 h-3.5" />,
-      color: 'text-purple-400',
+      icon: 'compare_arrows',
+      color: 'text-[#00ffa3]',
+      bgColor: 'bg-[#00ffa3]/10',
+      glowColor: 'shadow-[0_0_15px_rgba(0,255,163,0.3)]',
     },
   ];
 
   return (
-    <div className="px-4 py-3 border-b border-border-dim bg-bg-surface/30">
+    <div className="px-4 py-4 border-b border-white/5 bg-black/20 backdrop-blur-sm">
       {/* Date Picker Row */}
-      <div className="flex items-center justify-between mb-3">
-        <span className="text-[10px] text-gray-500 uppercase tracking-wider font-medium">Overview</span>
+      <div className="flex items-center justify-between mb-4">
+        <span className="text-[10px] text-gray-400 uppercase tracking-widest font-bold">Overview</span>
         <DatePicker selectedDate={selectedDate} onDateChange={onDateChange} />
       </div>
       
       {/* Stats Grid */}
-      <div className="grid grid-cols-3 gap-2">
+      <div className="grid grid-cols-3 gap-2.5">
         {statItems.map((stat) => (
           <div
             key={stat.label}
-            className="flex flex-col items-center justify-center py-2 px-1 rounded-md bg-black/30 border border-white/5"
+            className={`overview-card flex flex-col items-center justify-center py-3 px-2 rounded-xl group cursor-default ${stat.glowColor}`}
           >
-            <div className={`flex items-center gap-1 ${stat.color}`}>
-              {stat.icon}
-              <span className="font-mono text-sm font-bold">
-                {loading ? '—' : (stat.value == null ? '—' : stat.value.toLocaleString())}
+            {/* Icon */}
+            <div className={`w-8 h-8 rounded-lg ${stat.bgColor} flex items-center justify-center mb-2 transition-transform group-hover:scale-110`}>
+              <span className={`material-symbols-outlined text-lg ${stat.color} drop-shadow-[0_0_8px_currentColor]`}>
+                {stat.icon}
               </span>
             </div>
-            <span className="text-[9px] text-gray-500 mt-0.5">{stat.label}</span>
+            {/* Value */}
+            <span className={`font-mono text-lg font-bold ${stat.color} drop-shadow-[0_0_10px_currentColor]`}>
+              {loading ? '—' : (stat.value == null ? '—' : stat.value.toLocaleString())}
+            </span>
+            {/* Label */}
+            <span className="text-[9px] text-gray-500 mt-0.5 uppercase tracking-wider font-medium">{stat.label}</span>
           </div>
         ))}
       </div>

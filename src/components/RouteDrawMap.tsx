@@ -2,7 +2,7 @@ import { useEffect, useRef, useState, useCallback } from 'react';
 import maplibregl from 'maplibre-gl';
 import 'maplibre-gl/dist/maplibre-gl.css';
 import type { RouteWaypoint, FlightConflict, Airport, ApproachLine } from '../types';
-import { Trash2, Plus, Navigation, Plane } from 'lucide-react';
+import { Trash2, Plus, Navigation } from 'lucide-react';
 import clsx from 'clsx';
 
 interface RouteDrawMapProps {
@@ -350,7 +350,7 @@ export function RouteDrawMap({
       },
       geometry: {
         type: 'Point' as const,
-        coordinates: [conflict.conflict_point.lon, conflict.conflict_point.lat],
+        coordinates: [conflict.waypoint.lon, conflict.waypoint.lat],
       },
     }));
 

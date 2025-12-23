@@ -43,6 +43,87 @@ export const fetchFlightStatus = async (flightId: string): Promise<FlightStatus>
 };
 
 // ============================================================
+// Live Monitor Data (from live_research.db)
+// ============================================================
+
+export interface LiveFlightData {
+  flight_id: string;
+  callsign: string | null;
+  airline: string | null;
+  origin: string | null;
+  destination: string | null;
+  lat: number;
+  lon: number;
+  alt: number;
+  heading: number;
+  speed: number;
+  is_anomaly: boolean;
+  is_military: boolean;
+  severity: number;
+  last_seen_ts: number;
+}
+
+export interface LiveFlightsResponse {
+  flights: LiveFlightData[];
+  anomaly_count: number;
+  total_count: number;
+}
+
+export interface LiveAnomalySince {
+  flight_id: string;
+  timestamp: number;
+  is_anomaly: boolean;
+  severity_cnn: number;
+  severity_dense: number;
+  callsign: string | null;
+  airline: string | null;
+  origin_airport: string | null;
+  destination_airport: string | null;
+  matched_rule_names: string | null;
+  matched_rule_ids: string | null;
+}
+
+export interface LiveAnomaliesSinceResponse {
+  anomalies: LiveAnomalySince[];
+  count: number;
+}
+
+/**
+ * Fetch all currently active flights from the live monitor.
+ * Returns all flights with their current position and anomaly status.
+ */
+export const fetchAllLiveFlights = async (): Promise<LiveFlightsResponse> => {
+  const response = await fetch(`${API_BASE}/live/flights`);
+  if (!response.ok) {
+    throw new Error('Failed to fetch live flights');
+  }
+  return response.json();
+};
+
+/**
+ * Fetch new anomalies since a specific timestamp.
+ * Used for detecting new anomalies and triggering alert sounds.
+ */
+export const fetchLiveAnomaliesSince = async (sinceTs: number): Promise<LiveAnomaliesSinceResponse> => {
+  const response = await fetch(`${API_BASE}/live/anomalies/since?ts=${Math.floor(sinceTs)}`);
+  if (!response.ok) {
+    throw new Error('Failed to fetch anomalies since timestamp');
+  }
+  return response.json();
+};
+
+/**
+ * Fetch flight track from the live research database.
+ */
+export const fetchLiveResearchTrack = async (flightId: string): Promise<FlightTrack> => {
+  const response = await fetch(`${API_BASE}/live/track/research/${flightId}`);
+  if (!response.ok) {
+    throw new Error('Failed to fetch live research track');
+  }
+  return response.json();
+};
+
+// ============================================================
 // History / System Reports (from feedback_tagged.db)
 // ============================================================
 

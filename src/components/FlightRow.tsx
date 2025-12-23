@@ -1,8 +1,8 @@
 import { useState, useMemo } from 'react';
 import clsx from 'clsx';
-import { ChevronDown, Plane, MapPin, Navigation, Gauge, ArrowUp, ExternalLink } from 'lucide-react';
+import { ChevronDown, ExternalLink } from 'lucide-react';
 import type { AnomalyReport, FlightPhase } from '../types';
-import { getAnomalyReason, getScoreColor, getScoreBgColor, formatTime } from '../utils/reason';
+import { getAnomalyReason, getScoreColor, formatTime } from '../utils/reason';
 
 interface FlightRowProps {
   report: AnomalyReport;
@@ -13,6 +13,14 @@ interface FlightRowProps {
   altitude?: number;
   speed?: number;
   heading?: number;
+}
+
+// Get indicator color based on score
+function getIndicatorColor(score: number): string {
+  if (score >= 95) return 'bg-red-500 shadow-[0_0_12px_rgba(239,68,68,0.8)]';
+  if (score >= 90) return 'bg-orange-500 shadow-[0_0_12px_rgba(249,115,22,0.8)]';
+  if (score >= 85) return 'bg-yellow-500 shadow-[0_0_12px_rgba(234,179,8,0.8)]';
+  return 'bg-[#63d1eb] shadow-[0_0_12px_rgba(99,209,235,0.8)]';
 }
 
 export function FlightRow({
@@ -36,7 +44,6 @@ export function FlightRow({
   const baseScore = score; // Use generated score for color calculation
   const reason = getAnomalyReason(report);
   const scoreColor = getScoreColor(baseScore);
-  const scoreBgColor = getScoreBgColor(baseScore);
 
   // Get origin/destination from report metadata if available
   const origin = report.origin_airport || report.full_report?.summary?.origin || '---';
@@ -81,47 +88,70 @@ export function FlightRow({
   return (
     <div
       className={clsx(
-        "border-b border-border-dim transition-all duration-200",
-        isSelected && "bg-primary/10 border-l-2 border-l-primary",
-        !isSelected && "hover:bg-white/[0.02]"
+        "mx-3 my-2 rounded-xl transition-all duration-300 relative overflow-hidden",
+        isSelected 
+          ? "flight-card-active" 
+          : "flight-card"
       )}
     >
       {/* Collapsed Row */}
       <div
         onClick={handleClick}
-        className="flex items-center justify-between p-3 cursor-pointer group"
+        className="flex items-center justify-between p-4 cursor-pointer group relative z-10"
       >
-        {/* Left: Indicator, Callsign with Score */}
-        <div className="flex items-center gap-2 flex-1 min-w-0">
-          <div className={clsx("w-2 h-2 rounded-full shrink-0", scoreBgColor)} />
-          <div className="flex items-center gap-2 min-w-0">
-            <span className="text-sm font-bold text-white truncate">{callsign}</span>
-            <span className={clsx("text-xs font-mono font-bold", scoreColor)}>
-              {displayScore}
+        {/* Left: Indicator, Callsign */}
+        <div className="flex items-center gap-3 flex-1 min-w-0">
+          {/* Animated indicator dot */}
+          <div className={clsx(
+            "w-2.5 h-2.5 rounded-full shrink-0 transition-all duration-300",
+            getIndicatorColor(baseScore),
+            isSelected && "animate-pulse"
+          )} />
+          <div className="flex flex-col min-w-0">
+            <span className={clsx(
+              "text-sm font-bold truncate transition-all duration-300",
+              isSelected ? "text-white drop-shadow-[0_0_10px_rgba(255,255,255,0.3)]" : "text-white/90 group-hover:text-white"
+            )}>
+              {callsign}
             </span>
+            {mode === 'live' && (
+              <span className="text-[9px] font-mono text-gray-500 uppercase tracking-wide">
+                {status}
+              </span>
+            )}
           </div>
         </div>
 
-        {/* Center: Reason or Status */}
-        <div className="flex items-center px-3 max-w-[140px]">
-          {mode === 'live' ? (
-            <span className="text-[10px] font-mono text-gray-400 uppercase px-2 py-0.5 rounded bg-white/5 truncate">
-              {status}
+        {/* Center: Score Badge + Reason */}
+        <div className="flex items-center gap-3 px-3">
+          {/* Score Badge */}
+          <span className={clsx(
+            "text-[11px] font-mono font-bold px-2 py-0.5 rounded-md bg-black/30 border border-white/10",
+            scoreColor,
+            isSelected && "border-[#63d1eb]/30"
+          )}>
+            {displayScore}
+          </span>
+          {/* Reason (truncated) */}
+          {mode === 'history' && reason !== 'N/A' && (
+            <span className="text-[10px] text-gray-400 truncate max-w-[80px] hidden sm:block">
+              {reason}
             </span>
-          ) : (
-            <span className="text-[10px] text-gray-400 truncate">{reason}</span>
           )}
         </div>
 
         {/* Right: Time and expand icon */}
-        <div className="flex items-center gap-2 shrink-0">
-          <span className="text-[10px] text-gray-500 font-mono">
+        <div className="flex items-center gap-3 shrink-0">
+          <span className={clsx(
+            "text-[10px] font-mono transition-colors",
+            isSelected ? "text-[#63d1eb]/80" : "text-gray-500"
+          )}>
             {formatTime(report.timestamp)}
           </span>
           <ChevronDown
             className={clsx(
-              "w-4 h-4 text-gray-500 transition-transform duration-200",
-              isExpanded && "rotate-180"
+              "w-4 h-4 transition-all duration-300",
+              isExpanded ? "rotate-180 text-[#63d1eb]" : "text-gray-500 group-hover:text-white"
             )}
           />
         </div>
@@ -129,51 +159,57 @@ export function FlightRow({
 
       {/* Expanded Details */}
       {isExpanded && (
-        <div className="px-4 pb-4 pt-1 border-t border-border-dim/50 animate-in slide-in-from-top-2 duration-200">
+        <div className="px-4 pb-4 pt-1 border-t border-white/5 animate-in slide-in-from-top-2 duration-200 relative z-10">
           {/* Flight ID */}
-          <div className="text-[10px] text-gray-500 font-mono mb-2">{report.flight_id}</div>
+          <div className="text-[10px] text-gray-500 font-mono mb-3 flex items-center gap-2">
+            <span className="material-symbols-outlined text-xs text-gray-600">fingerprint</span>
+            {report.flight_id}
+          </div>
           
           <div className="grid grid-cols-2 gap-3">
             {/* Route */}
             <div className="flex items-center gap-2 text-xs">
-              <MapPin className="w-3.5 h-3.5 text-green-400 shrink-0" />
+              <span className="material-symbols-outlined text-base text-[#10b981] drop-shadow-[0_0_8px_rgba(16,185,129,0.6)]">flight_takeoff</span>
               <span className="text-gray-500">From:</span>
-              <span className="text-white font-mono">{origin}</span>
+              <span className="text-white font-mono font-medium">{origin}</span>
             </div>
             <div className="flex items-center gap-2 text-xs">
-              <Plane className="w-3.5 h-3.5 text-blue-400 shrink-0" />
+              <span className="material-symbols-outlined text-base text-[#63d1eb] drop-shadow-[0_0_8px_rgba(99,209,235,0.6)]">flight_land</span>
               <span className="text-gray-500">To:</span>
-              <span className="text-white font-mono">{destination}</span>
+              <span className="text-white font-mono font-medium">{destination}</span>
             </div>
 
             {/* Flight data (if available) */}
             {altitude !== undefined && (
               <div className="flex items-center gap-2 text-xs">
-                <ArrowUp className="w-3.5 h-3.5 text-cyan-400 shrink-0" />
+                <span className="material-symbols-outlined text-base text-[#63d1eb]">altitude</span>
                 <span className="text-gray-500">Alt:</span>
-                <span className="text-white font-mono">{altitude.toLocaleString()} ft</span>
+                <span className="text-[#63d1eb] font-mono font-medium">{altitude.toLocaleString()} ft</span>
               </div>
             )}
             {speed !== undefined && (
               <div className="flex items-center gap-2 text-xs">
-                <Gauge className="w-3.5 h-3.5 text-yellow-400 shrink-0" />
+                <span className="material-symbols-outlined text-base text-yellow-400">speed</span>
                 <span className="text-gray-500">Speed:</span>
-                <span className="text-white font-mono">{speed} kts</span>
+                <span className="text-yellow-400 font-mono font-medium">{speed} kts</span>
               </div>
             )}
             {heading !== undefined && (
               <div className="flex items-center gap-2 text-xs">
-                <Navigation className="w-3.5 h-3.5 text-purple-400 shrink-0" style={{ transform: `rotate(${heading}deg)` }} />
+                <span className="material-symbols-outlined text-base text-purple-400" style={{ transform: `rotate(${heading}deg)` }}>navigation</span>
                 <span className="text-gray-500">Hdg:</span>
-                <span className="text-white font-mono">{heading}°</span>
+                <span className="text-purple-400 font-mono font-medium">{heading}°</span>
               </div>
             )}
 
             {/* Reason (in history mode) */}
             {mode === 'history' && reason !== 'N/A' && (
-              <div className="col-span-2 flex items-start gap-2 text-xs mt-1">
-                <span className="text-gray-500 shrink-0">Reason:</span>
-                <span className="text-gray-300">{reason}</span>
+              <div className="col-span-2 flex items-start gap-2 text-xs mt-1 p-2 rounded-lg bg-red-500/5 border border-red-500/20">
+                <span className="material-symbols-outlined text-base text-red-400 shrink-0">warning</span>
+                <div className="flex flex-col">
+                  <span className="text-[9px] text-red-400/70 uppercase tracking-wide font-bold mb-0.5">Anomaly Reason</span>
+                  <span className="text-gray-300 leading-relaxed">{reason}</span>
+                </div>
               </div>
             )}
           </div>
@@ -185,7 +221,7 @@ export function FlightRow({
               target="_blank"
               rel="noopener noreferrer"
               onClick={(e) => e.stopPropagation()}
-              className="mt-3 inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium text-cyan-400 bg-cyan-500/10 hover:bg-cyan-500/20 border border-cyan-500/30 rounded-md transition-colors"
+              className="mt-3 inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold text-[#63d1eb] bg-[#63d1eb]/10 hover:bg-[#63d1eb]/20 border border-[#63d1eb]/30 hover:border-[#63d1eb]/50 rounded-lg transition-all duration-300 shadow-[0_0_15px_rgba(99,209,235,0.1)] hover:shadow-[0_0_20px_rgba(99,209,235,0.25)]"
             >
               <ExternalLink className="w-3.5 h-3.5" />
               Open in FR24
