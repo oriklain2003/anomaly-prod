@@ -1,57 +1,52 @@
-import { useState } from 'react';
 import { Settings, Bell } from 'lucide-react';
+import { Link, useLocation } from 'react-router-dom';
 import clsx from 'clsx';
 
-type NavTab = 'dashboard' | 'intelligence' | 'explorer';
+type NavTab = 'dashboard' | 'route-check' | 'intelligence' | 'explorer';
+
+const navItems: { id: NavTab; label: string; path: string }[] = [
+  { id: 'dashboard', label: 'Dashboard', path: '/' },
+  { id: 'route-check', label: 'Route Check', path: '/route-check' },
+  { id: 'intelligence', label: 'Intelligence', path: '/' },
+  { id: 'explorer', label: 'Explorer', path: '/' },
+];
 
 export function Header() {
-  const [activeTab, setActiveTab] = useState<NavTab>('dashboard');
+  const location = useLocation();
+
+  const getActiveTab = (): NavTab => {
+    if (location.pathname === '/route-check') return 'route-check';
+    return 'dashboard';
+  };
+
+  const activeTab = getActiveTab();
 
   return (
     <header className="h-16 border-b border-border-dim bg-bg-main flex items-center justify-between px-6 shrink-0 z-20">
       {/* Left side - Logo and Navigation */}
       <div className="flex items-center gap-6">
         {/* Logo */}
-        <div className="flex items-center gap-3">
+        <Link to="/" className="flex items-center gap-3">
           <span className="material-symbols-outlined text-white text-3xl">diamond</span>
           <h1 className="font-display font-bold text-lg tracking-wider text-white">ONYX</h1>
-        </div>
+        </Link>
 
         {/* Navigation Tabs */}
         <div className="flex items-center gap-2">
-          <button
-            onClick={() => setActiveTab('dashboard')}
-            className={clsx(
-              "px-4 py-1.5 rounded-md text-xs font-medium transition-colors border",
-              activeTab === 'dashboard'
-                ? "bg-white/5 text-gray-300 border-white/5"
-                : "bg-transparent text-gray-500 border-transparent hover:bg-white/5 hover:text-gray-300"
-            )}
-          >
-            Dashboard
-          </button>
-          <button
-            onClick={() => setActiveTab('intelligence')}
-            className={clsx(
-              "px-4 py-1.5 rounded-md text-xs font-medium transition-colors border",
-              activeTab === 'intelligence'
-                ? "bg-white/5 text-gray-300 border-white/5"
-                : "bg-transparent text-gray-500 border-transparent hover:bg-white/5 hover:text-gray-300"
-            )}
-          >
-            Intelligence
-          </button>
-          <button
-            onClick={() => setActiveTab('explorer')}
-            className={clsx(
-              "px-4 py-1.5 rounded-md text-xs font-medium transition-colors border",
-              activeTab === 'explorer'
-                ? "bg-white/5 text-gray-300 border-white/5"
-                : "bg-transparent text-gray-500 border-transparent hover:bg-white/5 hover:text-gray-300"
-            )}
-          >
-            Explorer
-          </button>
+          {navItems.map((item) => (
+            <Link
+              key={item.id}
+              to={item.path}
+              className={clsx(
+                "px-4 py-1.5 rounded-md text-xs font-medium transition-colors border",
+                activeTab === item.id
+                  ? "bg-white/5 text-gray-300 border-white/5"
+                  : "bg-transparent text-gray-500 border-transparent hover:bg-white/5 hover:text-gray-300"
+              )}
+            >
+              {item.label}
+            </Link>
+          ))}
         </div>
       </div>
 

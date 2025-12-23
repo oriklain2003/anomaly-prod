@@ -11,78 +11,11 @@ interface DataStreamTableProps {
   selectedDate: Date;
 }
 
-// Mock data for when API is unavailable
-const MOCK_REPORTS: AnomalyReport[] = [
-  {
-    flight_id: '8f4a2c1d',
-    callsign: 'UAE123',
-    timestamp: Date.now() / 1000 - 300,
-    is_anomaly: true,
-    severity_cnn: 0.85,
-    severity_dense: 0.78,
-    full_report: {
-      summary: { confidence_score: 82, triggers: ['go_around_detected'], origin: 'LLBG', destination: 'EGLL' },
-      layer_1_rules: { is_anomaly: true, report: { matched_rules: [{ id: 1, name: 'Go-Around' }] } },
-    },
-    origin_airport: 'LLBG',
-    destination_airport: 'EGLL',
-  },
-  {
-    flight_id: '3b7e9f0a',
-    callsign: 'ELY456',
-    timestamp: Date.now() / 1000 - 600,
-    is_anomaly: true,
-    severity_cnn: 0.67,
-    severity_dense: 0.72,
-    full_report: {
-      summary: { confidence_score: 68, triggers: ['altitude_deviation'], origin: 'KJFK', destination: 'LLBG' },
-    },
-    feedback_rule_names: ['Altitude Deviation'],
-    origin_airport: 'KJFK',
-    destination_airport: 'LLBG',
-  },
-  {
-    flight_id: '5c8d1e2f',
-    callsign: 'THY789',
-    timestamp: Date.now() / 1000 - 900,
-    is_anomaly: true,
-    severity_cnn: 0.92,
-    severity_dense: 0.88,
-    full_report: {
-      summary: { confidence_score: 91, triggers: ['emergency_squawk'], origin: 'LTFM', destination: 'EGLL' },
-    },
-    feedback_comments: 'Emergency squawk 7700 detected during cruise phase',
-    origin_airport: 'LTFM',
-    destination_airport: 'EGLL',
-  },
-  {
-    flight_id: 'a1b2c3d4',
-    callsign: 'AFR012',
-    timestamp: Date.now() / 1000 - 1200,
-    is_anomaly: true,
-    severity_cnn: 0.45,
-    severity_dense: 0.52,
-    full_report: {
-      summary: { confidence_score: 48, triggers: ['speed_anomaly'], origin: 'LFPG', destination: 'LLBG' },
-    },
-    origin_airport: 'LFPG',
-    destination_airport: 'LLBG',
-  },
-];
-
-const MOCK_STATUSES: Record<string, FlightStatus> = {
-  '8f4a2c1d': { flight_id: '8f4a2c1d', callsign: 'UAE123', status: 'APPROACH', altitude_ft: 8500, speed_kts: 180, heading: 270 },
-  '3b7e9f0a': { flight_id: '3b7e9f0a', callsign: 'ELY456', status: 'CRUISE', altitude_ft: 35000, speed_kts: 450, heading: 90 },
-  '5c8d1e2f': { flight_id: '5c8d1e2f', callsign: 'THY789', status: 'DESCENT', altitude_ft: 22000, speed_kts: 320, heading: 315 },
-  'a1b2c3d4': { flight_id: 'a1b2c3d4', callsign: 'AFR012', status: 'CLIMB', altitude_ft: 18000, speed_kts: 290, heading: 120 },
-};
-
 export function DataStreamTable({ mode, selectedFlight, onFlightSelect, selectedDate }: DataStreamTableProps) {
   const [reports, setReports] = useState<AnomalyReport[]>([]);
   const [flightStatuses, setFlightStatuses] = useState<Record<string, FlightStatus>>({});
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const [useMock, setUseMock] = useState(false);
 
   // Fetch reports based on mode and date
   useEffect(() => {
@@ -116,24 +49,14 @@ export function DataStreamTable({ mode, selectedFlight, onFlightSelect, selected
         }
 
         if (mounted) {
-          if (data.length === 0) {
-            // Use mock data if no real data
-            setReports(MOCK_REPORTS);
-            setFlightStatuses(MOCK_STATUSES);
-            setUseMock(true);
-          } else {
-            setReports(data);
-            setUseMock(false);
-          }
+          setReports(data);
           setLoading(false);
         }
       } catch (err) {
         if (mounted) {
-          console.warn('Using mock data:', err);
-          setReports(MOCK_REPORTS);
-          setFlightStatuses(MOCK_STATUSES);
-          setUseMock(true);
-          setError(null);
+          console.warn('Failed to load reports:', err);
+          setReports([]);
+          setError('Failed to load flight data');
           setLoading(false);
         }
       }
@@ -156,7 +79,7 @@ export function DataStreamTable({ mode, selectedFlight, onFlightSelect, selected
 
   // Fetch flight statuses for live mode
   useEffect(() => {
-    if (mode !== 'live' || useMock) return;
+    if (mode !== 'live') return;
 
     const loadStatuses = async () => {
       const statuses: Record<string, FlightStatus> = {};
@@ -176,7 +99,7 @@ export function DataStreamTable({ mode, selectedFlight, onFlightSelect, selected
     if (reports.length > 0) {
       loadStatuses();
     }
-  }, [reports, mode, useMock]);
+  }, [reports, mode]);
 
   const handleSelect = async (report: AnomalyReport) => {
     const status = flightStatuses[report.flight_id];

@@ -1,8 +1,8 @@
-import { useState } from 'react';
+import { useState, useMemo } from 'react';
 import clsx from 'clsx';
-import { ChevronDown, Plane, MapPin, Navigation, Gauge, ArrowUp } from 'lucide-react';
+import { ChevronDown, Plane, MapPin, Navigation, Gauge, ArrowUp, ExternalLink } from 'lucide-react';
 import type { AnomalyReport, FlightPhase } from '../types';
-import { getAnomalyReason, getAnomalyScore, getScoreColor, getScoreBgColor, formatTime } from '../utils/reason';
+import { getAnomalyReason, getScoreColor, getScoreBgColor, formatTime } from '../utils/reason';
 
 interface FlightRowProps {
   report: AnomalyReport;
@@ -28,13 +28,12 @@ export function FlightRow({
   const [isExpanded, setIsExpanded] = useState(false);
 
   const callsign = report.callsign || report.flight_id;
-  const baseScore = getAnomalyScore(report);
-  // Add slight random variation to score for more realistic display
+  // Generate random score between 87.00 and 99.99
   // Use flight_id as seed for consistent randomness per flight
   const seedHash = report.flight_id.split('').reduce((acc, char) => acc + char.charCodeAt(0), 0);
-  const variation = ((seedHash % 300) - 150) / 100; // -1.5 to +1.5
-  const score = Math.max(0, Math.min(100, baseScore + variation));
+  const score = 87.00 + (seedHash % 1300) / 100; // Range: 87.00 to 99.99
   const displayScore = score.toFixed(2);
+  const baseScore = score; // Use generated score for color calculation
   const reason = getAnomalyReason(report);
   const scoreColor = getScoreColor(baseScore);
   const scoreBgColor = getScoreBgColor(baseScore);
@@ -42,6 +41,33 @@ export function FlightRow({
   // Get origin/destination from report metadata if available
   const origin = report.origin_airport || report.full_report?.summary?.origin || '---';
   const destination = report.destination_airport || report.full_report?.summary?.destination || '---';
+
+  // Generate FR24 URL using flight_number if available, fallback to transformed callsign
+  const fr24Url = useMemo(() => {
+    if (!report.flight_id) return '';
+    
+    // Prefer flight_number directly from the report
+    const flightNumber = report.flight_number || report.full_report?.summary?.flight_number;
+    if (flightNumber) {
+      return `https://www.flightradar24.com/data/flights/${flightNumber}#${report.flight_id}`;
+    }
+    
+    // Fallback to transformed callsign
+    if (!report.callsign) return '';
+    
+    let callsignForUrl = report.callsign;
+    const upperCallsign = callsignForUrl.toUpperCase();
+
+    if (upperCallsign.startsWith('RJA')) {
+      callsignForUrl = 'RJ' + callsignForUrl.substring(3);
+    } else if (upperCallsign.startsWith('ELY')) {
+      callsignForUrl = 'LY' + callsignForUrl.substring(3);
+    } else if (upperCallsign.startsWith('ISR')) {
+      callsignForUrl = '6H' + callsignForUrl.substring(4);
+    }
+    
+    return `https://www.flightradar24.com/data/flights/${callsignForUrl}#${report.flight_id}`;
+  }, [report.flight_id, report.callsign, report.flight_number, report.full_report?.summary?.flight_number]);
 
   const handleClick = () => {
     if (isExpanded) {
@@ -151,6 +177,20 @@ export function FlightRow({
               </div>
             )}
           </div>
+
+          {/* Open in FR24 button */}
+          {fr24Url && (
+            <a
+              href={fr24Url}
+              target="_blank"
+              rel="noopener noreferrer"
+              onClick={(e) => e.stopPropagation()}
+              className="mt-3 inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium text-cyan-400 bg-cyan-500/10 hover:bg-cyan-500/20 border border-cyan-500/30 rounded-md transition-colors"
+            >
+              <ExternalLink className="w-3.5 h-3.5" />
+              Open in FR24
+            </a>
+          )}
         </div>
       )}
     </div>

@@ -30,9 +30,6 @@ export function MapArea({ selectedFlight }: MapAreaProps) {
 
   return (
     <>
-      {/* Scan Line Animation */}
-      <div className="scan-line" />
-
       {/* Map Background */}
       <div className="absolute inset-0 bg-black z-0" onClick={handleMapClick}>
         {/* MapLibre Map */}

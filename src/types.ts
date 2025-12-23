@@ -67,6 +67,7 @@ export interface LayerResult {
 export interface AnomalyReport {
   flight_id: string;
   callsign?: string;
+  flight_number?: string;  // IATA flight number (e.g., "LY123")
   timestamp: number;
   is_anomaly: boolean;
   severity_cnn: number;
@@ -277,4 +278,139 @@ export interface FlightMetadata {
   signal_loss_events?: number;
   is_anomaly?: boolean;
   is_military?: boolean;
+}
+
+// ============================================================
+// Route Check Types
+// ============================================================
+
+export interface RouteWaypoint {
+  lat: number;
+  lon: number;
+  alt: number; // altitude in feet
+  id: string;
+}
+
+export interface Airport {
+  code: string;
+  name: string;
+  lat: number;
+  lon: number;
+  elevation_ft?: number;
+}
+
+// Extended airport with runway data (from airports.json)
+export interface RunwayApproach {
+  runway_end: string;
+  heading: number;
+  threshold: { lat: number; lon: number };
+  approach_start: { lat: number; lon: number };
+  line: Array<{ lat: number; lon: number }>;
+}
+
+export interface Runway {
+  runway_id: number | null;
+  runway_name: string;
+  length_ft: number | null;
+  width_ft: number | null;
+  surface: string | null;
+  lighted: boolean;
+  closed: boolean;
+  approaches: RunwayApproach[];
+}
+
+export interface AirportFull {
+  ident: string;
+  icao_code: string | null;
+  iata_code: string | null;
+  name: string;
+  type: string;
+  lat: number;
+  lon: number;
+  elevation_ft: number | null;
+  municipality: string | null;
+  country_code: string;
+  country_name: string;
+  scheduled_service: boolean;
+  runways: Runway[];
+}
+
+export interface AirportsByCountry {
+  [countryCode: string]: {
+    name: string;
+    code: string;
+    airports: AirportFull[];
+  };
+}
+
+export interface AirportsFullResponse {
+  countries: AirportsByCountry;
+  total_airports: number;
+  total_runways: number;
+}
+
+export interface ApproachLine {
+  airport_code: string;
+  airport_name: string;
+  runway: string;
+  runway_end: string;
+  heading: number;
+  line: Array<{ lat: number; lon: number }>;
+  threshold: { lat: number; lon: number };
+}
+
+export interface ScheduledFlight {
+  flight_number: string;
+  airline: string;
+  departure_airport: string;
+  arrival_airport: string;
+  scheduled_departure?: string;
+  scheduled_arrival?: string;
+  aircraft_type?: string;
+  type: 'departure' | 'arrival';
+  // Runway info (if available)
+  runway?: string;
+  runway_end?: string;
+  approach_heading?: number;
+}
+
+export interface ConflictPoint {
+  lat: number;
+  lon: number;
+  alt: number;
+  waypoint_index: number;
+  distance_nm: number;
+  altitude_diff_ft: number;
+  estimated_time: string;
+}
+
+export interface FlightConflict {
+  flight: ScheduledFlight;
+  waypoint: ConflictPoint;
+  severity: 'low' | 'medium' | 'high';
+}
+
+export interface TimeSlotAnalysis {
+  time: string;
+  conflict_count: number;
+  conflicts: FlightConflict[];
+}
+
+export interface RouteCheckRequest {
+  waypoints: RouteWaypoint[];
+  datetime: string; // ISO format
+  check_alternatives?: boolean;
+}
+
+export interface RouteCheckResponse {
+  original_analysis: TimeSlotAnalysis;
+  airports_checked: Airport[];
+  approach_lines?: ApproachLine[];
+  flights_analyzed: number;
+  suggestion?: {
+    time: string;
+    conflict_count: number;
+    message: string;
+  };
+  alternative_slots?: TimeSlotAnalysis[];
 }

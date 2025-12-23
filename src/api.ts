@@ -5,6 +5,11 @@ import type {
   FlightMetadata,
   LearnedLayers,
   OverviewStats,
+  RouteCheckRequest,
+  RouteCheckResponse,
+  Airport,
+  AirportsFullResponse,
+  AirportFull,
 } from './types';
 
 const API_BASE = (import.meta.env.VITE_API_URL || '') + '/api';
@@ -187,6 +192,147 @@ export const fetchTaggedStatsOverview = async (startTs: number, endTs: number): 
 };
 
 // ============================================================
+// Batch APIs - Reduces multiple API calls to single requests
+// ============================================================
+
+export interface SafetyBatchResponse {
+  emergency_codes?: EmergencyCodeStat[];
+  near_miss?: NearMissEvent[];
+  go_arounds?: GoAroundStat[];
+  go_arounds_hourly?: { hour: number; count: number }[];
+  safety_monthly?: { month: string; emergencies: number; near_miss: number; go_arounds: number }[];
+  near_miss_locations?: { lat: number; lon: number; severity: string; count: number }[];
+  safety_by_phase?: Record<string, { total: number; emergency: number; near_miss: number; go_around: number }>;
+  emergency_aftermath?: { code: string; flights: number; diverted: number; continued: number; returned: number }[];
+  top_airline_emergencies?: { airline: string; count: number; codes: string[] }[];
+  near_miss_by_country?: Record<string, number>;
+}
+
+export interface IntelligenceBatchResponse {
+  airline_efficiency?: { airline: string; flights: number; anomaly_rate: number; avg_delay: number }[];
+  holding_patterns?: HoldingPatternStat[];
+  gps_jamming?: GPSJammingPoint[];
+  military_patterns?: MilitaryPatternStat[];
+  pattern_clusters?: PatternCluster[];
+  military_routes?: { route_id: string; waypoints: { lat: number; lon: number }[]; flight_count: number }[] | null;
+  airline_activity?: { airline: string; daily_counts: { date: string; count: number }[] }[] | null;
+}
+
+/**
+ * Fetch all safety statistics in a single request.
+ * Replaces 10 parallel API calls with 1.
+ */
+export const fetchSafetyBatch = async (
+  startTs: number, 
+  endTs: number, 
+  include?: string[]
+): Promise<SafetyBatchResponse> => {
+  const response = await fetch(`${API_BASE}/stats/safety/batch`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      start_ts: Math.floor(startTs),
+      end_ts: Math.floor(endTs),
+      include: include || [
+        'emergency_codes', 'near_miss', 'go_arounds', 'hourly',
+        'monthly', 'locations', 'phase', 'aftermath', 'top_airlines', 'by_country'
+      ]
+    })
+  });
+  if (!response.ok) {
+    throw new Error('Failed to fetch safety batch');
+  }
+  return response.json();
+};
+
+/**
+ * Fetch all intelligence statistics in a single request.
+ * Replaces 7 parallel API calls with 1.
+ */
+export const fetchIntelligenceBatch = async (
+  startTs: number, 
+  endTs: number, 
+  include?: string[]
+): Promise<IntelligenceBatchResponse> => {
+  const response = await fetch(`${API_BASE}/intel/batch`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      start_ts: Math.floor(startTs),
+      end_ts: Math.floor(endTs),
+      include: include || [
+        'efficiency', 'holding', 'gps_jamming', 'military',
+        'clusters', 'routes', 'activity'
+      ]
+    })
+  });
+  if (!response.ok) {
+    throw new Error('Failed to fetch intelligence batch');
+  }
+  return response.json();
+};
+
+// Types for batch responses (used above)
+export interface EmergencyCodeStat {
+  code: string;
+  description: string;
+  count: number;
+  airlines: { airline: string; count: number }[];
+}
+
+export interface NearMissEvent {
+  flight_id: string;
+  callsign: string;
+  other_flight_id: string;
+  other_callsign: string;
+  min_distance_nm: number;
+  timestamp: number;
+  lat: number;
+  lon: number;
+  severity: string;
+}
+
+export interface GoAroundStat {
+  airport: string;
+  count: number;
+  flights: { flight_id: string; callsign: string; timestamp: number }[];
+}
+
+export interface HoldingPatternStat {
+  location: string;
+  lat: number;
+  lon: number;
+  count: number;
+  avg_duration_min: number;
+  airports: string[];
+}
+
+export interface GPSJammingPoint {
+  lat: number;
+  lon: number;
+  intensity: number;
+  affected_flights: number;
+  first_seen: number;
+  last_seen: number;
+}
+
+export interface MilitaryPatternStat {
+  callsign: string;
+  aircraft_type: string;
+  flights: number;
+  total_hours: number;
+  regions: string[];
+}
+
+export interface PatternCluster {
+  cluster_id: string;
+  pattern_type: string;
+  count: number;
+  flights: string[];
+  center: { lat: number; lon: number };
+}
+
+// ============================================================
 // AI / Chat
 // ============================================================
 
@@ -274,6 +420,107 @@ export const analyzeWithAI = async (request: AnalyzeRequest, signal?: AbortSigna
   
   if (!response.ok) {
     throw new Error('Failed to analyze flight');
+  }
+  
+  return response.json();
+};
+
+// ============================================================
+// Route Check
+// ============================================================
+
+/**
+ * Get list of airports with coordinates.
+ */
+export const fetchAirports = async (): Promise<Airport[]> => {
+  const response = await fetch(`${API_BASE}/route-check/airports`);
+  if (!response.ok) {
+    throw new Error('Failed to fetch airports');
+  }
+  return response.json();
+};
+
+/**
+ * Analyze a route for potential conflicts with scheduled traffic.
+ */
+export const analyzeRoute = async (request: RouteCheckRequest, signal?: AbortSignal): Promise<RouteCheckResponse> => {
+  const response = await fetch(`${API_BASE}/route-check/analyze`, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify(request),
+    signal,
+  });
+  
+  if (!response.ok) {
+    const errorData = await response.json().catch(() => ({}));
+    throw new Error(errorData.detail || 'Failed to analyze route');
+  }
+  
+  return response.json();
+};
+
+/**
+ * Get airports with full data including runways and approach lines.
+ * 
+ * @param options - Filter options
+ * @param options.country - Filter by country code (IL, JO, LB, etc.)
+ * @param options.withRunwaysOnly - Only return airports with runway data
+ * @param options.withScheduledService - Only return airports with scheduled service
+ * @param options.airportTypes - Comma-separated types (large_airport, medium_airport, etc.)
+ */
+export const fetchAirportsFull = async (options?: {
+  country?: string;
+  withRunwaysOnly?: boolean;
+  withScheduledService?: boolean;
+  airportTypes?: string;
+}): Promise<AirportsFullResponse> => {
+  const params = new URLSearchParams();
+  
+  if (options?.country) params.set('country', options.country);
+  if (options?.withRunwaysOnly) params.set('with_runways_only', 'true');
+  if (options?.withScheduledService) params.set('with_scheduled_service', 'true');
+  if (options?.airportTypes) params.set('airport_types', options.airportTypes);
+  
+  const url = params.toString() 
+    ? `${API_BASE}/route-check/airports-full?${params}`
+    : `${API_BASE}/route-check/airports-full`;
+    
+  const response = await fetch(url);
+  if (!response.ok) {
+    throw new Error('Failed to fetch airports');
+  }
+  return response.json();
+};
+
+/**
+ * Get detailed info for a single airport including runway approach lines.
+ */
+export const fetchAirportDetails = async (code: string): Promise<AirportFull> => {
+  const response = await fetch(`${API_BASE}/route-check/airport/${encodeURIComponent(code)}`);
+  if (!response.ok) {
+    throw new Error(`Failed to fetch airport ${code}`);
+  }
+  return response.json();
+};
+
+/**
+ * Create a route line between two airports with runway approach/departure paths.
+ */
+export const createRouteLine = async (origin: string, destination: string): Promise<{
+  origin: { code: string; name: string; lat: number; lon: number; runways: any[] };
+  destination: { code: string; name: string; lat: number; lon: number; runways: any[] };
+  direct_line: Array<{ lat: number; lon: number }>;
+  distance_nm: number;
+}> => {
+  const response = await fetch(`${API_BASE}/route-check/route-line?origin=${encodeURIComponent(origin)}&destination=${encodeURIComponent(destination)}`, {
+    method: 'POST',
+  });
+  
+  if (!response.ok) {
+    const errorData = await response.json().catch(() => ({}));
+    throw new Error(errorData.detail || 'Failed to create route line');
   }
   
   return response.json();
