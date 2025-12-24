@@ -146,7 +146,7 @@ function createPlaneIcon(fillColor: string, strokeColor: string, size = 8): Imag
   return ctx.getImageData(0, 0, size, size);
 }
 
-export function MapComponent({ onMouseMove, selectedFlight, activeLayers, mode = 'history', onFlightClick }: MapComponentProps) {
+export function MapComponent({ onMouseMove: _onMouseMove, selectedFlight, activeLayers, mode = 'history', onFlightClick }: MapComponentProps) {
   const mapContainer = useRef<HTMLDivElement>(null);
   const map = useRef<maplibregl.Map | null>(null);
   const startMarkerRef = useRef<maplibregl.Marker | null>(null);
