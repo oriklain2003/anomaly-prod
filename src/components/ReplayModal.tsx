@@ -2,7 +2,7 @@ import { useEffect, useRef, useState } from 'react';
 import maplibregl from 'maplibre-gl';
 import 'maplibre-gl/dist/maplibre-gl.css';
 import { X, Play, Pause, SkipBack, SkipForward, AlertTriangle, MapPin, Wrench, Check } from 'lucide-react';
-import { fetchFeedbackTrack, fetchReplayOtherFlight } from '../api';
+import { fetchFeedbackTrack, fetchReplayOtherFlight, fetchUnifiedTrack } from '../api';
 import type { TrackPoint } from '../types';
 import clsx from 'clsx';
 import { WORLD_AIRPORTS } from '../data/airports';
@@ -101,9 +101,10 @@ export function ReplayModal({ mainFlightId, secondaryFlightIds = [], events = []
       try {
         const secondaryIds = [...new Set(secondaryFlightIds)].filter(Boolean);
         
-        // Fetch main flight
+        // Fetch main flight - try feedback track first, then unified track (which can fetch from FR24)
         const mainFlightResult = await (async () => {
           try {
+            // First try feedback track (local databases)
             const track = await fetchFeedbackTrack(mainFlightId);
             return {
               id: mainFlightId,
@@ -111,8 +112,20 @@ export function ReplayModal({ mainFlightId, secondaryFlightIds = [], events = []
               color: COLORS[0] // Main flight is always cyan
             };
           } catch (err) {
-            console.warn(`Failed to fetch main flight track for ${mainFlightId}:`, err);
-            return null;
+            console.warn(`Feedback track not found for ${mainFlightId}, trying unified track...`);
+            try {
+              // Fallback to unified track which can fetch from FR24
+              const track = await fetchUnifiedTrack(mainFlightId);
+              console.log(`Loaded ${mainFlightId} via unified track with ${track.points.length} points`);
+              return {
+                id: mainFlightId,
+                points: track.points.sort((a, b) => a.timestamp - b.timestamp),
+                color: COLORS[0]
+              };
+            } catch (err2) {
+              console.warn(`Failed to fetch main flight track for ${mainFlightId}:`, err2);
+              return null;
+            }
           }
         })();
 

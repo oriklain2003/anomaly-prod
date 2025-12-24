@@ -7,7 +7,7 @@ import type { SelectedFlight } from '../types';
 interface MapAreaProps {
   selectedFlight: SelectedFlight | null;
   mode?: 'live' | 'history';
-  onFlightClick?: (flightId: string, isAnomaly: boolean, callsign?: string) => void;
+  onFlightClick?: (flightId: string, isAnomaly: boolean, callsign?: string, origin?: string, destination?: string) => void;
 }
 
 export function MapArea({ selectedFlight, mode = 'history', onFlightClick }: MapAreaProps) {
@@ -45,9 +45,6 @@ export function MapArea({ selectedFlight, mode = 'history', onFlightClick }: Map
         
         {/* Grid Overlay */}
         <div className="absolute inset-0 map-grid opacity-10 pointer-events-none" />
-        
-        {/* Vignette effect */}
-        <div className="absolute inset-0 bg-[radial-gradient(circle_at_50%_50%,rgba(11,13,16,0)_30%,rgba(8,9,11,0.7)_100%)] pointer-events-none" />
       </div>
 
       {/* Map Controls - Top Right */}

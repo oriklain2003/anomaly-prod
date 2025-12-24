@@ -8,6 +8,7 @@ interface OperationsSidebarProps {
   onModeChange: (mode: 'live' | 'history') => void;
   selectedFlight: SelectedFlight | null;
   onFlightSelect: (flight: SelectedFlight) => void;
+  onFlightUpdate?: (flight: SelectedFlight) => void;
   selectedDate: Date;
   onDateChange: (date: Date) => void;
   onNewAnomaly?: (flightId: string) => void;
@@ -18,6 +19,7 @@ export function OperationsSidebar({
   onModeChange,
   selectedFlight,
   onFlightSelect,
+  onFlightUpdate,
   selectedDate,
   onDateChange,
   onNewAnomaly,
@@ -95,6 +97,7 @@ export function OperationsSidebar({
           mode={mode}
           selectedFlight={selectedFlight}
           onFlightSelect={onFlightSelect}
+          onFlightUpdate={onFlightUpdate}
           selectedDate={selectedDate}
           onNewAnomaly={onNewAnomaly}
         />

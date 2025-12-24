@@ -7,7 +7,7 @@ import type { AnomalyReport } from '../types';
 const TAGGING_RULES: Record<number, string> = {
   1: 'Emergency Squawk',    // Transponder emergency code (7500, 7600, 7700)
   2: 'Altitude Change',     // Extreme altitude change detected
-  3: 'Holding Pattern',     // Sharp heading change or holding pattern (Abrupt Turn)
+  3: 'Abrupt Turn',         // Sharp heading change or holding pattern
   4: 'Proximity Alert',     // Dangerous proximity to another aircraft
   6: 'Go-Around',           // Aborted landing and climb-out
   7: 'Return to Field',     // Immediate return to origin airport
@@ -31,8 +31,10 @@ const RULE_NAME_MAP: Record<string, string> = {
   'proximity_alert': 'Proximity Alert',
   'proximity alert': 'Proximity Alert',
   'dangerous_proximity': 'Proximity Alert',
-  'holding_pattern': 'Holding Pattern',
-  'holding pattern': 'Holding Pattern',
+  'abrupt_turn': 'Abrupt Turn',
+  'abrupt turn': 'Abrupt Turn',
+  'holding_pattern': 'Abrupt Turn',
+  'holding pattern': 'Abrupt Turn',
   'go_around': 'Go Around',
   'go around': 'Go Around',
   'go-around': 'Go Around',
@@ -99,21 +101,32 @@ function truncate(str: string, maxLength: number): string {
 
 /**
  * Get the anomaly reason from a report following priority:
- * 1. Matched rules from full_report (use rule.id to look up TAGGING_RULES)
- * 2. Tagged rule_id (maps to TAGGING_RULES)
- * 3. Tagged rule_name (normalized)
+ * 1. Tagged rule_id (human-verified, from user_feedback table) - HIGHEST PRIORITY
+ * 2. Tagged rule_name (from user_feedback)
+ * 3. Matched rules from full_report (automated detection)
  * 4. Matched rule IDs from anomaly_reports
  * 5. Truncated comments
  * 6. "N/A" if nothing available
  * 
- * Primarily uses rule.id -> TAGGING_RULES mapping for consistency.
+ * Human-tagged values take precedence over automated detection.
  */
 export function getAnomalyReason(report: AnomalyReport): string {
-  // 1. Check for matched rules in full_report - PRIORITY: use rule.id
+  // 1. Check for tagged rule_id (direct from user_feedback table) - HIGHEST PRIORITY
+  // Human-tagged values should override automated detection
+  if (report.rule_id && TAGGING_RULES[report.rule_id]) {
+    return TAGGING_RULES[report.rule_id];
+  }
+
+  // 2. Check for tagged rule_name (from user_feedback)
+  if (report.rule_name) {
+    return normalizeRuleName(report.rule_name);
+  }
+
+  // 3. Check for matched rules in full_report (automated detection)
   const matchedRules = report.full_report?.layer_1_rules?.report?.matched_rules;
   if (matchedRules && matchedRules.length > 0) {
     const rule = matchedRules[0];
-    // Always prefer rule.id -> TAGGING_RULES lookup
+    // Use rule.id -> TAGGING_RULES lookup
     if (rule.id && TAGGING_RULES[rule.id]) {
       return TAGGING_RULES[rule.id];
     }
@@ -121,16 +134,6 @@ export function getAnomalyReason(report: AnomalyReport): string {
     if (rule.name) {
       return normalizeRuleName(rule.name);
     }
-  }
-
-  // 2. Check for tagged rule_id (direct from user_feedback table)
-  if (report.rule_id && TAGGING_RULES[report.rule_id]) {
-    return TAGGING_RULES[report.rule_id];
-  }
-
-  // 3. Check for tagged rule_name (from user_feedback)
-  if (report.rule_name) {
-    return normalizeRuleName(report.rule_name);
   }
 
   // 4. Check for matched_rule_ids (denormalized in anomaly_reports)

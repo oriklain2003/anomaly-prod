@@ -61,6 +61,11 @@ export interface LiveFlightData {
   is_military: boolean;
   severity: number;
   last_seen_ts: number;
+  // Additional metadata from FR24
+  aircraft_type: string | null;
+  aircraft_registration: string | null;
+  flight_number: string | null;
+  category: string | null;
 }
 
 export interface LiveFlightsResponse {

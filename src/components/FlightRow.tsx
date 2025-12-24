@@ -1,6 +1,6 @@
 import { useState, useMemo } from 'react';
 import clsx from 'clsx';
-import { ChevronDown, ExternalLink } from 'lucide-react';
+import { ChevronDown, ExternalLink, Plane } from 'lucide-react';
 import type { AnomalyReport, FlightPhase } from '../types';
 import { getAnomalyReason, getScoreColor, formatTime } from '../utils/reason';
 
@@ -93,11 +93,31 @@ export function FlightRow({
       >
         {/* Left: Indicator + Callsign (col-span-4) */}
         <div className="col-span-4 flex items-center gap-2">
-          {/* Red indicator dot */}
+          {/* Glowing plane icon - red for anomaly, blue for normal */}
           <div className={clsx(
-            "w-1.5 h-1.5 rounded-full shrink-0 bg-red-500 shadow-[0_0_8px_rgba(239,68,68,0.5)]",
-            isSelected && "animate-pulse w-2 h-2 shadow-[0_0_8px_rgba(239,68,68,0.8)]"
-          )} />
+            "relative shrink-0 transition-all duration-300",
+            isSelected && "scale-125"
+          )}>
+            {/* Glow effect behind the plane */}
+            <div className={clsx(
+              "absolute inset-0 rounded-full blur-md opacity-60",
+              baseScore >= 50 ? "bg-red-500" : "bg-cyan-500",
+              isSelected && "animate-pulse opacity-80"
+            )} style={{ transform: 'scale(1.8)', left: '-4px', top: '-2px' }} />
+            {/* Plane icon */}
+            <Plane 
+              className={clsx(
+                "w-4 h-4 relative z-10 transform -rotate-45",
+                baseScore >= 50 ? "text-red-400" : "text-cyan-400"
+              )}
+              style={{
+                filter: baseScore >= 50 
+                  ? 'drop-shadow(0 0 6px rgba(239, 68, 68, 0.8)) drop-shadow(0 0 12px rgba(239, 68, 68, 0.5))'
+                  : 'drop-shadow(0 0 6px rgba(6, 182, 212, 0.8)) drop-shadow(0 0 12px rgba(6, 182, 212, 0.5))'
+              }}
+              fill="currentColor"
+            />
+          </div>
           <span className={clsx(
             "font-mono text-sm font-semibold transition-colors truncate",
             isSelected ? "text-white font-bold tracking-wide" : "text-gray-200 group-hover:text-white"

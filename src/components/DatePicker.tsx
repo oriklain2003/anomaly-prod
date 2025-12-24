@@ -43,11 +43,11 @@ function saveDates(dates: Date[]) {
   }
 }
 
-// Add a date to the searched list (max 5, no duplicates, most recent first)
+// Add a date to the searched list (max 3, no duplicates, most recent first)
 function addToSearchedDates(date: Date): Date[] {
   const dateStr = date.toDateString();
   const existing = getSavedDates().filter(d => d.toDateString() !== dateStr);
-  const newDates = [date, ...existing].slice(0, 5);
+  const newDates = [date, ...existing].slice(0, 3);
   saveDates(newDates);
   return newDates;
 }

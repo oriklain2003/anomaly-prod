@@ -83,12 +83,8 @@ export function StatsCard({ mode, selectedDate, onDateChange }: StatsCardProps) 
     };
   }, [mode, selectedDate]);
 
-  // Calculate anomalies as sum of all anomaly categories in the frontend
-  const calculatedAnomalies = (stats.emergency_codes || 0) + 
-                              (stats.safety_events || 0) + 
-                              (stats.go_arounds || 0) + 
-                              (stats.near_miss || 0) + 
-                              (stats.holding_patterns || 0);
+  // Use total_anomalies directly from backend (count of distinct flights with anomalies)
+  const calculatedAnomalies = stats.total_anomalies || 0;
 
   // Calculate traffic as sum of: holding pattern, go-around, return to field, unplanned landing
   const calculatedTraffic = (stats.holding_patterns || 0) + 
@@ -97,29 +93,14 @@ export function StatsCard({ mode, selectedDate, onDateChange }: StatsCardProps) 
                             (stats.unplanned_landing || 0);
 
   const statItems: StatItem[] = [
+
     {
-      label: 'Emergency',
-      value: stats.emergency_codes,
-      icon: 'crisis_alert',
-      color: 'text-red-400',
-      bgColor: 'bg-red-500/10',
-      glowColor: 'shadow-[0_0_15px_rgba(248,113,113,0.3)]',
-    },
-    {
-      label: 'Safety',
-      value: stats.safety_events,
-      icon: 'shield',
-      color: 'text-orange-400',
-      bgColor: 'bg-orange-500/10',
-      glowColor: 'shadow-[0_0_15px_rgba(251,146,60,0.3)]',
-    },
-    {
-      label: 'Military',
-      value: stats.military_flights ?? 0,
-      icon: 'military_tech',
-      color: 'text-yellow-400',
-      bgColor: 'bg-yellow-500/10',
-      glowColor: 'shadow-[0_0_15px_rgba(250,204,21,0.3)]',
+      label: 'Flights',
+      value: stats.total_flights,
+      icon: 'flight',
+      color: 'text-[#63d1eb]',
+      bgColor: 'bg-[#63d1eb]/10',
+      glowColor: 'shadow-[0_0_15px_rgba(99,209,235,0.3)]',
     },
     {
       label: 'Anomalies',
@@ -130,6 +111,16 @@ export function StatsCard({ mode, selectedDate, onDateChange }: StatsCardProps) 
       glowColor: 'shadow-[0_0_15px_rgba(192,132,252,0.3)]',
     },
     {
+      label: 'Emergency',
+      value: stats.emergency_codes,
+      icon: 'crisis_alert',
+      color: 'text-red-400',
+      bgColor: 'bg-red-500/10',
+      glowColor: 'shadow-[0_0_15px_rgba(248,113,113,0.3)]',
+    },
+
+
+    {
       label: 'Traffic',
       value: calculatedTraffic,  // Sum of holding pattern + go-around + return to field + unplanned landing
       icon: 'traffic',
@@ -138,13 +129,22 @@ export function StatsCard({ mode, selectedDate, onDateChange }: StatsCardProps) 
       glowColor: 'shadow-[0_0_15px_rgba(0,255,163,0.3)]',
     },
     {
-      label: 'Flights',
-      value: stats.total_flights,
-      icon: 'flight',
-      color: 'text-[#63d1eb]',
-      bgColor: 'bg-[#63d1eb]/10',
-      glowColor: 'shadow-[0_0_15px_rgba(99,209,235,0.3)]',
+      label: 'Military',
+      value: stats.military_flights ?? 0,
+      icon: 'military_tech',
+      color: 'text-yellow-400',
+      bgColor: 'bg-yellow-500/10',
+      glowColor: 'shadow-[0_0_15px_rgba(250,204,21,0.3)]',
     },
+    {
+      label: 'Safety',
+      value: stats.safety_events,
+      icon: 'shield',
+      color: 'text-orange-400',
+      bgColor: 'bg-orange-500/10',
+      glowColor: 'shadow-[0_0_15px_rgba(251,146,60,0.3)]',
+    },
+
   ];
 
   return (

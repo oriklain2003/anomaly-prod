@@ -100,22 +100,22 @@ export function TacticalChat({ selectedFlight, onOpenReplay }: TacticalChatProps
   }, [messages]);
 
   // Switch to current mode when a flight is selected
-  useEffect(() => {
-    if (selectedFlight) {
-      setMode('current');
+  // useEffect(() => {
+  //   if (selectedFlight) {
+  //     setMode('current');
       
-      // Add a context message about the selected flight
-      const contextMessage: Message = {
-        id: `context-${Date.now()}`,
-        role: 'system',
-        content: t.flightSelected(selectedFlight.callsign || selectedFlight.flight_id),
-        timestamp: new Date().toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: false }),
-        sender: 'SYSTEM',
-      };
+  //     // Add a context message about the selected flight
+  //     const contextMessage: Message = {
+  //       id: `context-${Date.now()}`,
+  //       role: 'system',
+  //       content: t.flightSelected(selectedFlight.callsign || selectedFlight.flight_id),
+  //       timestamp: new Date().toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: false }),
+  //       sender: 'SYSTEM',
+  //     };
       
-      setMessages(prev => [...prev, contextMessage]);
-    }
-  }, [selectedFlight?.flight_id, t]);
+  //     setMessages(prev => [...prev, contextMessage]);
+  //   }
+  // }, [selectedFlight?.flight_id, t]);
 
   // Get secondary flight IDs from proximity events (rule.id === 4)
   const getSecondaryFlightIds = (): string[] => {

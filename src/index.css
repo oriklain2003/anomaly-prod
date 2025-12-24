@@ -534,3 +534,38 @@ body {
     opacity: 0.6;
   }
 }
+
+/* Live Flight Marker Styles */
+.live-flight-marker {
+  cursor: pointer;
+  z-index: 15;
+  pointer-events: auto;
+  /* No transition on the marker itself - must stay locked to map position */
+}
+
+/* Scale effect on hover using a child wrapper to avoid affecting map positioning */
+.live-flight-marker:hover > div {
+  transform: scale(1.15);
+}
+
+.live-flight-marker > div {
+  transition: transform 0.15s ease;
+}
+
+.live-flight-marker .material-symbols-outlined {
+  font-family: 'Material Symbols Outlined';
+  font-weight: normal;
+  font-style: normal;
+  display: inline-block;
+  line-height: 1;
+  text-transform: none;
+  letter-spacing: normal;
+  word-wrap: normal;
+  white-space: nowrap;
+  direction: ltr;
+  -webkit-font-smoothing: antialiased;
+}
+
+.live-flight-marker:hover .material-symbols-outlined {
+  filter: brightness(1.2);
+}

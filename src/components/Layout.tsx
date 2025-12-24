@@ -105,6 +105,17 @@ export function Layout() {
     setSelectedFlight(flight);
   };
 
+  // Handler to update the currently selected flight's data (e.g., after refresh)
+  const handleFlightUpdate = useCallback((flight: SelectedFlight) => {
+    // Only update if it's the same flight that's currently selected
+    setSelectedFlight(prev => {
+      if (prev && prev.flight_id === flight.flight_id) {
+        return flight;
+      }
+      return prev;
+    });
+  }, []);
+
   const handleModeChange = (newMode: 'live' | 'history') => {
     setMode(newMode);
     // Clear selection when switching modes
@@ -124,14 +135,16 @@ export function Layout() {
   }, [playAlert]);
 
   // Handle flight click from map
-  const handleMapFlightClick = useCallback(async (flightId: string, isAnomaly: boolean, callsign?: string) => {
-    console.log('[Layout] Flight clicked on map:', flightId, 'isAnomaly:', isAnomaly);
+  const handleMapFlightClick = useCallback(async (flightId: string, isAnomaly: boolean, callsign?: string, origin?: string, destination?: string) => {
+    console.log('[Layout] Flight clicked on map:', flightId, 'isAnomaly:', isAnomaly, 'origin:', origin, 'dest:', destination);
     
     try {
-      // Create a basic selected flight object
+      // Create a basic selected flight object with origin/destination from live data
       const selectedFlightObj: SelectedFlight = {
         flight_id: flightId,
         callsign: callsign || flightId,
+        origin: origin,
+        destination: destination,
       };
 
       // Try to load track data
@@ -194,6 +207,7 @@ export function Layout() {
             onModeChange={handleModeChange}
             selectedFlight={selectedFlight}
             onFlightSelect={handleFlightSelect}
+            onFlightUpdate={handleFlightUpdate}
             selectedDate={selectedDate}
             onDateChange={handleDateChange}
             onNewAnomaly={handleNewAnomaly}

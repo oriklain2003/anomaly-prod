@@ -1,7 +1,7 @@
 import { Layers, Filter } from 'lucide-react';
 import clsx from 'clsx';
 
-export type MapLayer = 'paths' | 'turns' | 'sids' | 'stars' | 'track' | 'anomalies';
+export type MapLayer = 'paths' | 'turns' | 'sids' | 'stars' | 'track' | 'anomalies' | 'bbox';
 
 interface MapControlsProps {
   activeLayers: MapLayer[];
@@ -19,6 +19,7 @@ const LAYER_CONFIG: { id: MapLayer; label: string; color: string }[] = [
   { id: 'turns', label: 'Turn Zones', color: '#f97316' },
   { id: 'sids', label: 'SID Routes', color: '#3b82f6' },
   { id: 'stars', label: 'STAR Routes', color: '#ec4899' },
+  { id: 'bbox', label: 'Training Region', color: '#fbbf24' },
 ];
 
 export function MapControls({
