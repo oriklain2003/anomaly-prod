@@ -1,4 +1,4 @@
-import { useState, useMemo } from 'react';
+import { useState, useMemo, useEffect } from 'react';
 import clsx from 'clsx';
 import { ChevronDown, ExternalLink, Plane } from 'lucide-react';
 import type { AnomalyReport, FlightPhase } from '../types';
@@ -26,6 +26,13 @@ export function FlightRow({
   heading,
 }: FlightRowProps) {
   const [isExpanded, setIsExpanded] = useState(false);
+
+  // Collapse when another flight is selected (this one becomes deselected)
+  useEffect(() => {
+    if (!isSelected) {
+      setIsExpanded(false);
+    }
+  }, [isSelected]);
 
   const callsign = report.callsign || report.flight_id;
   // Generate random score between 87.00 and 99.99

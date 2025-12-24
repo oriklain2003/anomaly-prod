@@ -1,4 +1,4 @@
-import { Layers, Filter } from 'lucide-react';
+import { Layers } from 'lucide-react';
 import clsx from 'clsx';
 
 export type MapLayer = 'paths' | 'turns' | 'sids' | 'stars' | 'track' | 'anomalies' | 'bbox';
@@ -8,8 +8,6 @@ interface MapControlsProps {
   onLayerToggle: (layer: MapLayer) => void;
   showLayersDropdown: boolean;
   setShowLayersDropdown: (show: boolean) => void;
-  showFiltersDropdown: boolean;
-  setShowFiltersDropdown: (show: boolean) => void;
 }
 
 const LAYER_CONFIG: { id: MapLayer; label: string; color: string }[] = [
@@ -27,108 +25,47 @@ export function MapControls({
   onLayerToggle,
   showLayersDropdown,
   setShowLayersDropdown,
-  showFiltersDropdown,
-  setShowFiltersDropdown,
 }: MapControlsProps) {
   return (
-    <>
-      {/* Layers Button */}
-      <div className="relative">
-        <button
-          onClick={() => {
-            setShowLayersDropdown(!showLayersDropdown);
-            setShowFiltersDropdown(false);
-          }}
-          className="px-4 py-2 bg-gray-900/90 backdrop-blur-md border border-white/10 rounded-md text-[11px] font-medium text-gray-300 hover:text-white hover:bg-gray-800 transition-colors shadow-lg flex items-center justify-between w-32 group"
-        >
-          <span>Layers</span>
-          <Layers className="h-4 w-4 text-gray-500 group-hover:text-white" />
-        </button>
+    <div className="relative">
+      <button
+        onClick={() => {
+          setShowLayersDropdown(!showLayersDropdown);
+        }}
+        className="px-4 py-2 bg-gray-900/90 backdrop-blur-md border border-white/10 rounded-md text-[11px] font-medium text-gray-300 hover:text-white hover:bg-gray-800 transition-colors shadow-lg flex items-center justify-between w-32 group"
+      >
+        <span>Layers</span>
+        <Layers className="h-4 w-4 text-gray-500 group-hover:text-white" />
+      </button>
 
-        {/* Layers Dropdown */}
-        {showLayersDropdown && (
-          <div className="absolute top-full left-0 mt-2 w-48 bg-gray-900/95 backdrop-blur-md border border-white/10 rounded-lg shadow-xl z-30 py-2">
-            {LAYER_CONFIG.map(layer => (
-              <button
-                key={layer.id}
-                onClick={() => onLayerToggle(layer.id)}
-                className={clsx(
-                  "w-full px-4 py-2 text-left text-xs font-medium transition-colors flex items-center justify-between gap-2",
-                  activeLayers.includes(layer.id)
-                    ? "text-white bg-white/5"
-                    : "text-gray-400 hover:text-white hover:bg-white/5"
-                )}
-              >
-                <div className="flex items-center gap-2">
-                  <div 
-                    className="w-2.5 h-2.5 rounded-full" 
-                    style={{ backgroundColor: layer.color, opacity: activeLayers.includes(layer.id) ? 1 : 0.4 }}
-                  />
-                  <span>{layer.label}</span>
-                </div>
-                {activeLayers.includes(layer.id) && (
-                  <span className="text-[9px] text-primary uppercase font-bold">ON</span>
-                )}
-              </button>
-            ))}
-          </div>
-        )}
-      </div>
-
-      {/* Filters Button */}
-      <div className="relative">
-        <button
-          onClick={() => {
-            setShowFiltersDropdown(!showFiltersDropdown);
-            setShowLayersDropdown(false);
-          }}
-          className="px-4 py-2 bg-gray-900/90 backdrop-blur-md border border-white/10 rounded-md text-[11px] font-medium text-gray-300 hover:text-white hover:bg-gray-800 transition-colors shadow-lg flex items-center justify-between w-32 group"
-        >
-          <span>Filters</span>
-          <Filter className="h-4 w-4 text-gray-500 group-hover:text-white" />
-        </button>
-
-        {/* Filters Dropdown */}
-        {showFiltersDropdown && (
-          <div className="absolute top-full left-0 mt-2 w-56 bg-gray-900/95 backdrop-blur-md border border-white/10 rounded-lg shadow-xl z-30 p-4">
-            <div className="space-y-3">
-              <div>
-                <label className="text-[10px] text-gray-500 uppercase tracking-wider font-bold mb-2 block">
-                  Altitude Range
-                </label>
-                <div className="flex gap-2">
-                  <input
-                    type="number"
-                    placeholder="Min"
-                    className="w-full px-2 py-1.5 bg-black/50 border border-white/10 rounded text-xs text-white placeholder:text-gray-600 focus:outline-none focus:border-primary/50"
-                  />
-                  <input
-                    type="number"
-                    placeholder="Max"
-                    className="w-full px-2 py-1.5 bg-black/50 border border-white/10 rounded text-xs text-white placeholder:text-gray-600 focus:outline-none focus:border-primary/50"
-                  />
-                </div>
+      {/* Layers Dropdown */}
+      {showLayersDropdown && (
+        <div className="absolute top-full left-0 mt-2 w-48 bg-gray-900/95 backdrop-blur-md border border-white/10 rounded-lg shadow-xl z-30 py-2">
+          {LAYER_CONFIG.map(layer => (
+            <button
+              key={layer.id}
+              onClick={() => onLayerToggle(layer.id)}
+              className={clsx(
+                "w-full px-4 py-2 text-left text-xs font-medium transition-colors flex items-center justify-between gap-2",
+                activeLayers.includes(layer.id)
+                  ? "text-white bg-white/5"
+                  : "text-gray-400 hover:text-white hover:bg-white/5"
+              )}
+            >
+              <div className="flex items-center gap-2">
+                <div 
+                  className="w-2.5 h-2.5 rounded-full" 
+                  style={{ backgroundColor: layer.color, opacity: activeLayers.includes(layer.id) ? 1 : 0.4 }}
+                />
+                <span>{layer.label}</span>
               </div>
-              
-              <div>
-                <label className="text-[10px] text-gray-500 uppercase tracking-wider font-bold mb-2 block">
-                  Flight Type
-                </label>
-                <select className="w-full px-2 py-1.5 bg-black/50 border border-white/10 rounded text-xs text-white focus:outline-none focus:border-primary/50">
-                  <option value="all">All Types</option>
-                  <option value="commercial">Commercial</option>
-                  <option value="military">Military</option>
-                  <option value="private">Private</option>
-                </select>
-              </div>
-
-              <button className="w-full py-2 bg-primary/20 border border-primary/30 rounded text-xs text-primary font-medium hover:bg-primary/30 transition-colors">
-                Apply Filters
-              </button>
-            </div>
-          </div>
-        )}
-      </div>
-    </>
+              {activeLayers.includes(layer.id) && (
+                <span className="text-[9px] text-primary uppercase font-bold">ON</span>
+              )}
+            </button>
+          ))}
+        </div>
+      )}
+    </div>
   );
 }

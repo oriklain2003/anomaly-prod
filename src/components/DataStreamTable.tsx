@@ -4,7 +4,7 @@ import type { AnomalyReport, FlightStatus, SelectedFlight } from '../types';
 import { FlightRow } from './FlightRow';
 import { fetchLiveAnomalies, fetchSystemReports, fetchFlightStatus, fetchUnifiedTrack, fetchSystemReportTrack, fetchLiveAnomaliesSince, fetchLiveResearchTrack } from '../api';
 
-const LIVE_POLL_INTERVAL = 10000; // 10 seconds
+// Polling disabled - data doesn't get updated in real-time
 
 interface DataStreamTableProps {
   mode: 'live' | 'history';
@@ -15,7 +15,7 @@ interface DataStreamTableProps {
   onNewAnomaly?: (flightId: string) => void; // Callback for new anomaly detection
 }
 
-export function DataStreamTable({ mode, selectedFlight, onFlightSelect, onFlightUpdate, selectedDate, onNewAnomaly }: DataStreamTableProps) {
+export function DataStreamTable({ mode, selectedFlight, onFlightSelect, onFlightUpdate: _onFlightUpdate, selectedDate, onNewAnomaly }: DataStreamTableProps) {
   const [reports, setReports] = useState<AnomalyReport[]>([]);
   const [flightStatuses, setFlightStatuses] = useState<Record<string, FlightStatus>>({});
   const [loading, setLoading] = useState(true);
@@ -101,42 +101,6 @@ export function DataStreamTable({ mode, selectedFlight, onFlightSelect, onFlight
         if (mounted) {
           setReports(data);
           setLoading(false);
-          
-          // If there's a selected flight, update its data with the latest report
-          if (selectedFlight && onFlightUpdate) {
-            const updatedReport = data.find(r => r.flight_id === selectedFlight.flight_id);
-            if (updatedReport) {
-              // Refresh the selected flight's track data
-              (async () => {
-                try {
-                  let track;
-                  if (mode === 'live') {
-                    try {
-                      track = await fetchLiveResearchTrack(selectedFlight.flight_id);
-                    } catch {
-                      track = await fetchUnifiedTrack(selectedFlight.flight_id);
-                    }
-                  } else {
-                    try {
-                      track = await fetchUnifiedTrack(selectedFlight.flight_id);
-                    } catch {
-                      track = await fetchSystemReportTrack(selectedFlight.flight_id);
-                    }
-                  }
-                  
-                  if (track && track.points && track.points.length > 0) {
-                    onFlightUpdate({
-                      ...selectedFlight,
-                      report: updatedReport,
-                      track,
-                    });
-                  }
-                } catch (err) {
-                  console.warn('Could not update selected flight track:', err);
-                }
-              })();
-            }
-          }
         }
       } catch (err) {
         if (mounted) {
@@ -156,18 +120,11 @@ export function DataStreamTable({ mode, selectedFlight, onFlightSelect, onFlight
 
     loadReports();
 
-    // Polling for live mode only - 10 second interval
-    let pollInterval: number | null = null;
-    if (mode === 'live') {
-      pollInterval = window.setInterval(loadReports, LIVE_POLL_INTERVAL);
-    }
-
     return () => {
       mounted = false;
       controller.abort();
-      if (pollInterval) clearInterval(pollInterval);
     };
-  }, [mode, selectedDate, fetchLiveData, selectedFlight, onFlightUpdate]);
+  }, [mode, selectedDate, fetchLiveData]);
 
   // Fetch flight statuses for live mode
   useEffect(() => {

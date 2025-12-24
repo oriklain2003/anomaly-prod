@@ -29,7 +29,9 @@ const TRANSLATIONS = {
     welcome: 'ONYX Intelligence System ready. Select a flight from the Operations panel or ask a general question about flight data.',
     tacticalChat: 'Tactical Chat',
     current: 'Current',
+    currentOther: 'נוכחי',
     general: 'General',
+    generalOther: 'כללי',
     flightPrefix: 'Flight:',
     askAboutFlight: (name: string) => `Ask about ${name}...`,
     askGeneral: 'Ask anything about flight operations...',
@@ -47,7 +49,9 @@ const TRANSLATIONS = {
     welcome: 'מערכת ONYX מוכנה. בחר טיסה מפאנל הפעולות או שאל שאלה כללית על נתוני טיסה.',
     tacticalChat: 'צ\'אט טקטי',
     current: 'נוכחי',
+    currentOther: 'Current',
     general: 'כללי',
+    generalOther: 'General',
     flightPrefix: 'טיסה:',
     askAboutFlight: (name: string) => `שאל שאלה לגבי ${name}...`,
     askGeneral: 'שאל כל דבר על פעולות טיסה...',
@@ -86,8 +90,8 @@ function OnyxIcon({ className = "w-4 h-4" }: { className?: string }) {
 export function TacticalChat({ selectedFlight, onOpenReplay }: TacticalChatProps) {
   const [mode, setMode] = useState<ChatMode>('general');
   const [input, setInput] = useState('');
-  const [language, setLanguage] = useState<ChatLanguage>('en');
-  const [messages, setMessages] = useState<Message[]>([getWelcomeMessage('en')]);
+  const [language, setLanguage] = useState<ChatLanguage>('he');
+  const [messages, setMessages] = useState<Message[]>([getWelcomeMessage(language)]);
   const [isLoading, setIsLoading] = useState(false);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   
@@ -100,22 +104,11 @@ export function TacticalChat({ selectedFlight, onOpenReplay }: TacticalChatProps
   }, [messages]);
 
   // Switch to current mode when a flight is selected
-  // useEffect(() => {
-  //   if (selectedFlight) {
-  //     setMode('current');
-      
-  //     // Add a context message about the selected flight
-  //     const contextMessage: Message = {
-  //       id: `context-${Date.now()}`,
-  //       role: 'system',
-  //       content: t.flightSelected(selectedFlight.callsign || selectedFlight.flight_id),
-  //       timestamp: new Date().toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: false }),
-  //       sender: 'SYSTEM',
-  //     };
-      
-  //     setMessages(prev => [...prev, contextMessage]);
-  //   }
-  // }, [selectedFlight?.flight_id, t]);
+  useEffect(() => {
+    if (selectedFlight) {
+      setMode('current');
+    }
+  }, [selectedFlight?.flight_id]);
 
   // Get secondary flight IDs from proximity events (rule.id === 4)
   const getSecondaryFlightIds = (): string[] => {

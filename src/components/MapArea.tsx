@@ -14,7 +14,6 @@ export function MapArea({ selectedFlight, mode = 'history', onFlightClick }: Map
   const [mouseCoords, setMouseCoords] = useState({ lat: 32.4412, lon: 35.8912, elv: 890 });
   const [activeLayers, setActiveLayers] = useState<MapLayer[]>(['track', 'anomalies']);
   const [showLayersDropdown, setShowLayersDropdown] = useState(false);
-  const [showFiltersDropdown, setShowFiltersDropdown] = useState(false);
 
   const toggleLayer = (layer: MapLayer) => {
     setActiveLayers(prev =>
@@ -27,7 +26,6 @@ export function MapArea({ selectedFlight, mode = 'history', onFlightClick }: Map
   // Close dropdowns when clicking on map
   const handleMapClick = () => {
     setShowLayersDropdown(false);
-    setShowFiltersDropdown(false);
   };
 
   return (
@@ -54,8 +52,6 @@ export function MapArea({ selectedFlight, mode = 'history', onFlightClick }: Map
           onLayerToggle={toggleLayer}
           showLayersDropdown={showLayersDropdown}
           setShowLayersDropdown={setShowLayersDropdown}
-          showFiltersDropdown={showFiltersDropdown}
-          setShowFiltersDropdown={setShowFiltersDropdown}
         />
         
         {/* Separator */}

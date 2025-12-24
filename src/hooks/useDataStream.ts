@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect } from 'react';
 import type { DataStreamEvent } from '../types';
 
 // Mock data generator for demo purposes
@@ -25,22 +25,15 @@ const generateMockEvent = (): DataStreamEvent => {
 
 interface UseDataStreamOptions {
   mode: 'live' | 'history';
-  pollingInterval?: number;
   maxEvents?: number;
 }
 
-export function useDataStream({ mode, pollingInterval = 5000, maxEvents = 50 }: UseDataStreamOptions) {
+export function useDataStream({ mode, maxEvents = 50 }: UseDataStreamOptions) {
   const [events, setEvents] = useState<DataStreamEvent[]>([]);
   const [isLoading, setIsLoading] = useState(true);
-  const intervalRef = useRef<NodeJS.Timeout | null>(null);
 
   useEffect(() => {
-    // Clear existing interval
-    if (intervalRef.current) {
-      clearInterval(intervalRef.current);
-    }
-
-    // Initial load
+    // Initial load only (no polling - data doesn't update in real-time)
     setIsLoading(true);
     
     // In production, this would fetch from the API
@@ -48,24 +41,7 @@ export function useDataStream({ mode, pollingInterval = 5000, maxEvents = 50 }: 
     const initialEvents: DataStreamEvent[] = Array.from({ length: 8 }, () => generateMockEvent());
     setEvents(initialEvents);
     setIsLoading(false);
-
-    // Only poll in live mode
-    if (mode === 'live') {
-      intervalRef.current = setInterval(() => {
-        const newEvent = generateMockEvent();
-        setEvents(prev => {
-          const updated = [newEvent, ...prev];
-          return updated.slice(0, maxEvents);
-        });
-      }, pollingInterval);
-    }
-
-    return () => {
-      if (intervalRef.current) {
-        clearInterval(intervalRef.current);
-      }
-    };
-  }, [mode, pollingInterval, maxEvents]);
+  }, [mode, maxEvents]);
 
   return { events, isLoading };
 }

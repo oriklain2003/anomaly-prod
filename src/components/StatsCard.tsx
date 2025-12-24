@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { fetchStatsOverview } from '../api';
+import { fetchStatsOverview, fetchLiveStatsOverview } from '../api';
 import { DatePicker } from './DatePicker';
 import type { OverviewStats } from '../types';
 
@@ -44,18 +44,24 @@ export function StatsCard({ mode, selectedDate, onDateChange }: StatsCardProps) 
       try {
         setLoading(true);
         
-        // Calculate start and end of selected date
-        const startOfDay = new Date(selectedDate);
-        startOfDay.setHours(0, 0, 0, 0);
-        const endOfDay = new Date(selectedDate);
-        endOfDay.setHours(23, 59, 59, 999);
+        let rawData: OverviewStats;
         
-        const startTs = Math.floor(startOfDay.getTime() / 1000);
-        const endTs = Math.floor(endOfDay.getTime() / 1000);
-
-        // Always use research_new.db stats for both live and history mode
-        // (feedback_tagged.db only has manually tagged flights, not all flights)
-        const rawData = await fetchStatsOverview(startTs, endTs);
+        if (mode === 'live') {
+          // Live mode: get stats from research_new.db (last 24 hours)
+          rawData = await fetchLiveStatsOverview();
+        } else {
+          // History mode: get stats from feedback_tagged.db for selected date
+          const startOfDay = new Date(selectedDate);
+          startOfDay.setHours(0, 0, 0, 0);
+          const endOfDay = new Date(selectedDate);
+          endOfDay.setHours(23, 59, 59, 999);
+          
+          const startTs = Math.floor(startOfDay.getTime() / 1000);
+          const endTs = Math.floor(endOfDay.getTime() / 1000);
+          
+          rawData = await fetchStatsOverview(startTs, endTs);
+        }
+        
         const data: OverviewStats = {
           ...rawData,
           military_flights: rawData.military_flights ?? 0,

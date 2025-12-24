@@ -1,68 +1,86 @@
 import type { AnomalyReport } from '../types';
 
 /**
- * Standard rule IDs - maps to rule IDs from the backend (api.py RULES_METADATA)
- * These match the actual rule_logic.py evaluator IDs
+ * Standard rule IDs - matches web2 UI tagging rules (source of truth)
+ * These are the rules available for human tagging in the feedback system
  */
 const TAGGING_RULES: Record<number, string> = {
-  1: 'Emergency Squawk',    // Transponder emergency code (7500, 7600, 7700)
-  2: 'Altitude Change',     // Extreme altitude change detected
-  3: 'Abrupt Turn',         // Sharp heading change or holding pattern
-  4: 'Proximity Alert',     // Dangerous proximity to another aircraft
-  6: 'Go-Around',           // Aborted landing and climb-out
-  7: 'Return to Field',     // Immediate return to origin airport
-  8: 'Diversion',           // Landed at unplanned destination
-  9: 'Low Altitude',        // Flight below minimum safe altitude
-  10: 'Signal Loss',        // Extended loss of signal
-  11: 'Off Course',         // Deviation from known flight paths
-  12: 'Unplanned Landing',  // Landing at incorrect airport
-  13: 'Military Aircraft',  // Military aircraft detection
+  // Emergency & Safety (Red)
+  1: 'Emergency Squawks',       // Transponder emergency code (7500, 7600, 7700)
+  2: 'Crash',                   // Aircraft crash or suspected crash event
+  3: 'Proximity Alert',         // Dangerous proximity between aircraft
+  
+  // Flight Operations (Blue)
+  4: 'Holding Pattern',         // Aircraft in holding pattern
+  5: 'Go Around',               // Aborted landing and go-around maneuver
+  6: 'Return to Land',          // Aircraft returning to departure airport
+  7: 'Unplanned Landing',       // Landing at unplanned airport
+  
+  // Technical (Purple)
+  8: 'Signal Loss',             // Loss of ADS-B signal
+  9: 'Off Course',              // Significant deviation from expected flight path
+  14: 'GPS Jamming',            // GPS jamming indicators detected
+  
+  // Military (Green)
+  10: 'Military Flight',        // Identified military aircraft
+  11: 'Operational Military',   // Military aircraft on operational mission
+  12: 'Suspicious Behavior',    // Unusual or suspicious flight behavior
+  13: 'Flight Academy',         // Training flight from flight school
 };
 
 /**
  * Map various rule name formats to standard display names
+ * Matches web2 UI naming conventions
  */
 const RULE_NAME_MAP: Record<string, string> = {
-  // Exact matches
-  'emergency_squawks': 'Emergency Squawk',
-  'emergency squawks': 'Emergency Squawk',
-  'emergency_squawk': 'Emergency Squawk',
+  // Emergency & Safety
+  'emergency_squawks': 'Emergency Squawks',
+  'emergency squawks': 'Emergency Squawks',
+  'emergency_squawk': 'Emergency Squawks',
   'crash': 'Crash',
   'proximity_alert': 'Proximity Alert',
   'proximity alert': 'Proximity Alert',
   'dangerous_proximity': 'Proximity Alert',
-  'abrupt_turn': 'Abrupt Turn',
-  'abrupt turn': 'Abrupt Turn',
-  'holding_pattern': 'Abrupt Turn',
-  'holding pattern': 'Abrupt Turn',
+  
+  // Flight Operations
+  'holding_pattern': 'Holding Pattern',
+  'holding pattern': 'Holding Pattern',
+  'abrupt_turn': 'Holding Pattern',  // Map old "abrupt turn" to new "holding pattern"
+  'abrupt turn': 'Holding Pattern',
   'go_around': 'Go Around',
   'go around': 'Go Around',
   'go-around': 'Go Around',
   'return_to_land': 'Return to Land',
   'return to land': 'Return to Land',
+  'return_to_field': 'Return to Land',
+  'return to field': 'Return to Land',
   'unplanned_landing': 'Unplanned Landing',
   'unplanned landing': 'Unplanned Landing',
+  'diversion': 'Unplanned Landing',
+  
+  // Technical
   'signal_loss': 'Signal Loss',
   'signal loss': 'Signal Loss',
   'off_course': 'Off Course',
   'off course': 'Off Course',
   'gps_jamming': 'GPS Jamming',
   'gps jamming': 'GPS Jamming',
+  'altitude_deviation': 'Off Course',
+  'altitude deviation': 'Off Course',
+  'path_deviation': 'Off Course',
+  'path deviation': 'Off Course',
+  
+  // Military
   'military_flight': 'Military Flight',
   'military flight': 'Military Flight',
+  'military_aircraft': 'Military Flight',
+  'military aircraft': 'Military Flight',
   'operational_military': 'Operational Military',
   'operational_military_flight': 'Operational Military',
   'suspicious_behavior': 'Suspicious Behavior',
   'suspicious behavior': 'Suspicious Behavior',
   'flight_academy': 'Flight Academy',
   'flight academy': 'Flight Academy',
-  // Additional common patterns
-  'altitude_deviation': 'Off Course',
-  'altitude deviation': 'Off Course',
-  'speed_anomaly': 'Off Course',
-  'speed anomaly': 'Off Course',
-  'path_deviation': 'Off Course',
-  'path deviation': 'Off Course',
 };
 
 /**

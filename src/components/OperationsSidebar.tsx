@@ -79,19 +79,6 @@ export function OperationsSidebar({
 
       {/* Data Stream Section */}
       <div className="flex-1 min-h-0 flex flex-col bg-black/20">
-        {/* Section Header */}
-        <div className="shrink-0 px-5 py-3 border-b border-white/5 flex justify-between items-center bg-black/30 backdrop-blur-sm">
-          <span className="text-[10px] font-mono font-bold text-gray-400 uppercase tracking-widest">
-            {mode === 'live' ? 'Active Flights' : 'Detection Log'}
-          </span>
-          <span className={clsx(
-            "w-2 h-2 rounded-full shadow-[0_0_10px]",
-            mode === 'live' 
-              ? "bg-[#00ffa3] shadow-[#00ffa3]/80 animate-pulse" 
-              : "bg-[#63d1eb] shadow-[#63d1eb]/80 animate-pulse"
-          )} />
-        </div>
-
         {/* Data Stream Table */}
         <DataStreamTable
           mode={mode}

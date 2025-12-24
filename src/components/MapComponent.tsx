@@ -29,7 +29,7 @@ interface ProximityFlightData {
   points: TrackPoint[];
 }
 
-const LIVE_POLL_INTERVAL = 10000; // 10 seconds
+const LIVE_POLL_INTERVAL = 10000; // 10 seconds for live flights polling
 
 // Training Region Bounding Box (Levant Region) - from core/config.py
 const TRAINING_BBOX = {
@@ -214,7 +214,7 @@ export function MapComponent({ onMouseMove: _onMouseMove, selectedFlight, active
     // Initial fetch
     fetchLiveFlightsData();
 
-    // Set up polling
+    // Set up polling for live mode
     const intervalId = setInterval(fetchLiveFlightsData, LIVE_POLL_INTERVAL);
 
     return () => {
@@ -279,20 +279,11 @@ export function MapComponent({ onMouseMove: _onMouseMove, selectedFlight, active
       }
     };
 
-    // Initial load
+    // Load track once (no polling - data doesn't update in real-time)
     loadTrack();
-
-    // In live mode, periodically refresh the track for the selected flight
-    let refreshInterval: number | null = null;
-    if (mode === 'live') {
-      refreshInterval = window.setInterval(loadTrack, LIVE_POLL_INTERVAL);
-    }
 
     return () => {
       mounted = false;
-      if (refreshInterval) {
-        clearInterval(refreshInterval);
-      }
     };
   }, [selectedFlight?.flight_id, mode]);
 

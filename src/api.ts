@@ -257,6 +257,14 @@ export const fetchStatsOverview = async (startTs: number, endTs: number): Promis
   return response.json();
 };
 
+export const fetchLiveStatsOverview = async (): Promise<OverviewStats> => {
+  const response = await fetch(`${API_BASE}/stats/live/overview`);
+  if (!response.ok) {
+    throw new Error('Failed to fetch live overview stats');
+  }
+  return response.json();
+};
+
 export interface TaggedStatsOverview {
   total_flights: number;
   total_anomalies: number;
