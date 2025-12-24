@@ -164,7 +164,7 @@ export function Layout() {
       {/* Main Content Area */}
       <div className="flex-1 flex overflow-hidden">
         {/* Left Sidebar - Operations Control */}
-        <aside className="w-80 flex flex-col bg-bg-panel border-r border-border-dim z-20 shrink-0 shadow-panel-glow">
+        <aside className="w-[420px] flex flex-col bg-[#0B0C10] border-r border-white/5 z-20 shrink-0 shadow-2xl">
           <OperationsSidebar
             mode={mode}
             onModeChange={handleModeChange}

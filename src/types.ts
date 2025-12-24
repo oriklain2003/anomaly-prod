@@ -212,6 +212,10 @@ export interface OverviewStats {
   emergency_codes: number;
   near_miss: number;
   holding_patterns: number;
+  military_flights?: number;
+  traffic_count?: number;
+  return_to_field?: number;
+  unplanned_landing?: number;
 }
 
 // Learned layers for map display

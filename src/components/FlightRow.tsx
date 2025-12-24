@@ -15,14 +15,6 @@ interface FlightRowProps {
   heading?: number;
 }
 
-// Get indicator color based on score
-function getIndicatorColor(score: number): string {
-  if (score >= 95) return 'bg-red-500 shadow-[0_0_12px_rgba(239,68,68,0.8)]';
-  if (score >= 90) return 'bg-orange-500 shadow-[0_0_12px_rgba(249,115,22,0.8)]';
-  if (score >= 85) return 'bg-yellow-500 shadow-[0_0_12px_rgba(234,179,8,0.8)]';
-  return 'bg-[#63d1eb] shadow-[0_0_12px_rgba(99,209,235,0.8)]';
-}
-
 export function FlightRow({
   report,
   mode,
@@ -94,64 +86,74 @@ export function FlightRow({
           : "flight-card"
       )}
     >
-      {/* Collapsed Row */}
+      {/* Collapsed Row - Grid Layout matching reference */}
       <div
         onClick={handleClick}
-        className="flex items-center justify-between p-4 cursor-pointer group relative z-10"
+        className="grid grid-cols-12 px-3 py-3 items-center cursor-pointer group relative z-10"
       >
-        {/* Left: Indicator, Callsign */}
-        <div className="flex items-center gap-3 flex-1 min-w-0">
-          {/* Animated indicator dot */}
+        {/* Left: Indicator + Callsign (col-span-4) */}
+        <div className="col-span-4 flex items-center gap-2">
+          {/* Red indicator dot */}
           <div className={clsx(
-            "w-2.5 h-2.5 rounded-full shrink-0 transition-all duration-300",
-            getIndicatorColor(baseScore),
-            isSelected && "animate-pulse"
+            "w-1.5 h-1.5 rounded-full shrink-0 bg-red-500 shadow-[0_0_8px_rgba(239,68,68,0.5)]",
+            isSelected && "animate-pulse w-2 h-2 shadow-[0_0_8px_rgba(239,68,68,0.8)]"
           )} />
-          <div className="flex flex-col min-w-0">
-            <span className={clsx(
-              "text-sm font-bold truncate transition-all duration-300",
-              isSelected ? "text-white drop-shadow-[0_0_10px_rgba(255,255,255,0.3)]" : "text-white/90 group-hover:text-white"
-            )}>
-              {callsign}
-            </span>
-            {mode === 'live' && (
-              <span className="text-[9px] font-mono text-gray-500 uppercase tracking-wide">
-                {status}
-              </span>
-            )}
-          </div>
+          <span className={clsx(
+            "font-mono text-sm font-semibold transition-colors truncate",
+            isSelected ? "text-white font-bold tracking-wide" : "text-gray-200 group-hover:text-white"
+          )}>
+            {callsign}
+          </span>
         </div>
 
-        {/* Center: Score Badge + Reason */}
-        <div className="flex items-center gap-3 px-3">
-          {/* Score Badge */}
-          <span className={clsx(
-            "text-[11px] font-mono font-bold px-2 py-0.5 rounded-md bg-black/30 border border-white/10",
-            scoreColor,
-            isSelected && "border-[#63d1eb]/30"
-          )}>
+        {/* Center: Score + Reason (col-span-5) */}
+        <div className="col-span-5">
+          {/* Score with glow */}
+          <span 
+            className={clsx(
+              "font-mono text-xs font-bold",
+              scoreColor
+            )}
+            style={{ 
+              textShadow: baseScore >= 90 
+                ? '0 0 12px rgba(248, 113, 113, 0.6)' 
+                : baseScore >= 50 
+                  ? '0 0 10px rgba(250, 204, 21, 0.5)' 
+                  : undefined 
+            }}
+          >
             {displayScore}
           </span>
-          {/* Reason (truncated) */}
+          {/* Reason below score */}
           {mode === 'history' && reason !== 'N/A' && (
-            <span className="text-[10px] text-gray-400 truncate max-w-[80px] hidden sm:block">
+            <span className="text-[10px] text-gray-500 block mt-0.5 truncate pr-2 group-hover:text-gray-400">
               {reason}
+            </span>
+          )}
+          {mode === 'history' && reason === 'N/A' && (
+            <span className="text-[10px] text-gray-600 block mt-0.5 uppercase">
+              N/A
+            </span>
+          )}
+          {mode === 'live' && (
+            <span className="text-[9px] font-mono text-gray-500 block mt-0.5 uppercase tracking-wide">
+              {status}
             </span>
           )}
         </div>
 
-        {/* Right: Time and expand icon */}
-        <div className="flex items-center gap-3 shrink-0">
+        {/* Right: Time + expand icon (col-span-3) */}
+        <div className="col-span-3 flex items-center justify-end gap-2">
           <span className={clsx(
-            "text-[10px] font-mono transition-colors",
-            isSelected ? "text-[#63d1eb]/80" : "text-gray-500"
+            "font-mono text-xs transition-colors",
+            isSelected ? "text-[#63d1eb] text-shadow-neon" : "text-gray-500"
           )}>
             {formatTime(report.timestamp)}
           </span>
           <ChevronDown
             className={clsx(
               "w-4 h-4 transition-all duration-300",
-              isExpanded ? "rotate-180 text-[#63d1eb]" : "text-gray-500 group-hover:text-white"
+              isExpanded ? "rotate-180 text-[#63d1eb]" : "text-gray-600 group-hover:text-gray-400"
             )}
           />
         </div>
@@ -159,60 +161,72 @@ export function FlightRow({
 
       {/* Expanded Details */}
       {isExpanded && (
-        <div className="px-4 pb-4 pt-1 border-t border-white/5 animate-in slide-in-from-top-2 duration-200 relative z-10">
-          {/* Flight ID */}
-          <div className="text-[10px] text-gray-500 font-mono mb-3 flex items-center gap-2">
-            <span className="material-symbols-outlined text-xs text-gray-600">fingerprint</span>
-            {report.flight_id}
+        <div className="px-4 pb-4 pt-1 relative z-10 animate-in slide-in-from-top-2 duration-200">
+          {/* Header: ID and Alert Badge */}
+          <div className="flex items-center justify-between mb-3 border-b border-white/5 pb-2">
+            <p className="text-[10px] text-gray-400 font-mono">
+              ID: <span className="text-gray-300">{report.flight_id.slice(0, 8)}</span>
+            </p>
+            {baseScore >= 90 && (
+              <span className="text-[9px] px-1.5 py-0.5 rounded bg-red-500/10 text-red-400 border border-red-500/20 uppercase tracking-wider font-bold">
+                High Alert
+              </span>
+            )}
           </div>
-          
-          <div className="grid grid-cols-2 gap-3">
-            {/* Route */}
-            <div className="flex items-center gap-2 text-xs">
-              <span className="material-symbols-outlined text-base text-[#10b981] drop-shadow-[0_0_8px_rgba(16,185,129,0.6)]">flight_takeoff</span>
-              <span className="text-gray-500">From:</span>
-              <span className="text-white font-mono font-medium">{origin}</span>
-            </div>
-            <div className="flex items-center gap-2 text-xs">
-              <span className="material-symbols-outlined text-base text-[#63d1eb] drop-shadow-[0_0_8px_rgba(99,209,235,0.6)]">flight_land</span>
-              <span className="text-gray-500">To:</span>
-              <span className="text-white font-mono font-medium">{destination}</span>
-            </div>
 
-            {/* Flight data (if available) */}
-            {altitude !== undefined && (
-              <div className="flex items-center gap-2 text-xs">
-                <span className="material-symbols-outlined text-base text-[#63d1eb]">altitude</span>
-                <span className="text-gray-500">Alt:</span>
-                <span className="text-[#63d1eb] font-mono font-medium">{altitude.toLocaleString()} ft</span>
+          {/* Origin/Destination boxes */}
+          <div className="grid grid-cols-2 gap-4 mb-4">
+            <div className="flex items-center gap-3 p-2 rounded bg-white/5 border border-white/5">
+              <span className="material-symbols-outlined text-[#63d1eb] text-lg">location_on</span>
+              <div className="flex flex-col">
+                <span className="text-[9px] text-gray-500 uppercase tracking-widest">From</span>
+                <span className="text-sm font-mono text-white font-medium">{origin}</span>
               </div>
-            )}
-            {speed !== undefined && (
-              <div className="flex items-center gap-2 text-xs">
-                <span className="material-symbols-outlined text-base text-yellow-400">speed</span>
-                <span className="text-gray-500">Speed:</span>
-                <span className="text-yellow-400 font-mono font-medium">{speed} kts</span>
+            </div>
+            <div className="flex items-center gap-3 p-2 rounded bg-white/5 border border-white/5">
+              <span className="material-symbols-outlined text-[#63d1eb] text-lg">flight_takeoff</span>
+              <div className="flex flex-col">
+                <span className="text-[9px] text-gray-500 uppercase tracking-widest">To</span>
+                <span className="text-sm font-mono text-white font-medium">{destination}</span>
               </div>
-            )}
-            {heading !== undefined && (
-              <div className="flex items-center gap-2 text-xs">
-                <span className="material-symbols-outlined text-base text-purple-400" style={{ transform: `rotate(${heading}deg)` }}>navigation</span>
-                <span className="text-gray-500">Hdg:</span>
-                <span className="text-purple-400 font-mono font-medium">{heading}°</span>
-              </div>
-            )}
+            </div>
+          </div>
 
-            {/* Reason (in history mode) */}
-            {mode === 'history' && reason !== 'N/A' && (
-              <div className="col-span-2 flex items-start gap-2 text-xs mt-1 p-2 rounded-lg bg-red-500/5 border border-red-500/20">
-                <span className="material-symbols-outlined text-base text-red-400 shrink-0">warning</span>
-                <div className="flex flex-col">
-                  <span className="text-[9px] text-red-400/70 uppercase tracking-wide font-bold mb-0.5">Anomaly Reason</span>
-                  <span className="text-gray-300 leading-relaxed">{reason}</span>
+          {/* Flight data row (if available) */}
+          {(altitude !== undefined || speed !== undefined || heading !== undefined) && (
+            <div className="flex gap-4 mb-3 text-xs">
+              {altitude !== undefined && (
+                <div className="flex items-center gap-1.5">
+                  <span className="material-symbols-outlined text-sm text-[#63d1eb]">altitude</span>
+                  <span className="text-gray-500">Alt:</span>
+                  <span className="text-[#63d1eb] font-mono">{altitude.toLocaleString()} ft</span>
                 </div>
-              </div>
-            )}
-          </div>
+              )}
+              {speed !== undefined && (
+                <div className="flex items-center gap-1.5">
+                  <span className="material-symbols-outlined text-sm text-yellow-400">speed</span>
+                  <span className="text-gray-500">Spd:</span>
+                  <span className="text-yellow-400 font-mono">{speed} kts</span>
+                </div>
+              )}
+              {heading !== undefined && (
+                <div className="flex items-center gap-1.5">
+                  <span className="material-symbols-outlined text-sm text-purple-400" style={{ transform: `rotate(${heading}deg)` }}>navigation</span>
+                  <span className="text-gray-500">Hdg:</span>
+                  <span className="text-purple-400 font-mono">{heading}°</span>
+                </div>
+              )}
+            </div>
+          )}
+
+          {/* Reason - simple inline format like reference */}
+          {mode === 'history' && reason !== 'N/A' && (
+            <div className="mt-2 pt-2 border-t border-white/5 flex gap-2 items-center">
+              <span className="material-symbols-outlined text-red-400 text-sm">warning</span>
+              <span className="text-xs text-gray-400">Reason:</span>
+              <span className="text-xs text-white font-medium">{reason}</span>
+            </div>
+          )}
 
           {/* Open in FR24 button */}
           {fr24Url && (

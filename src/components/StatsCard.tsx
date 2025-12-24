@@ -27,6 +27,10 @@ const MOCK_STATS: OverviewStats = {
   emergency_codes: 2,
   near_miss: 1,
   holding_patterns: 3,
+  military_flights: 12,
+  traffic_count: 45,
+  return_to_field: 2,
+  unplanned_landing: 1,
 };
 
 export function StatsCard({ mode, selectedDate, onDateChange }: StatsCardProps) {
@@ -51,7 +55,13 @@ export function StatsCard({ mode, selectedDate, onDateChange }: StatsCardProps) 
 
         let data: OverviewStats;
         if (mode === 'live') {
-          data = await fetchStatsOverview(startTs, endTs);
+          const rawData = await fetchStatsOverview(startTs, endTs);
+          data = {
+            ...rawData,
+            military_flights: rawData.military_flights ?? 0,
+            return_to_field: rawData.return_to_field ?? 0,
+            unplanned_landing: rawData.unplanned_landing ?? 0,
+          };
         } else {
           const taggedData = await fetchTaggedStatsOverview(startTs, endTs);
           data = {
@@ -62,6 +72,9 @@ export function StatsCard({ mode, selectedDate, onDateChange }: StatsCardProps) 
             emergency_codes: taggedData.emergency_codes,
             near_miss: taggedData.near_miss,
             holding_patterns: taggedData.holding_patterns,
+            military_flights: taggedData.military_flights ?? 0,
+            return_to_field: taggedData.return_to_field ?? 0,
+            unplanned_landing: taggedData.unplanned_landing ?? 0,
           };
         }
 
@@ -85,31 +98,20 @@ export function StatsCard({ mode, selectedDate, onDateChange }: StatsCardProps) 
     };
   }, [mode, selectedDate]);
 
+  // Calculate anomalies as sum of all anomaly categories in the frontend
+  const calculatedAnomalies = (stats.emergency_codes || 0) + 
+                              (stats.safety_events || 0) + 
+                              (stats.go_arounds || 0) + 
+                              (stats.near_miss || 0) + 
+                              (stats.holding_patterns || 0);
+
+  // Calculate traffic as sum of: holding pattern, go-around, return to field, unplanned landing
+  const calculatedTraffic = (stats.holding_patterns || 0) + 
+                            (stats.go_arounds || 0) + 
+                            (stats.return_to_field || 0) + 
+                            (stats.unplanned_landing || 0);
+
   const statItems: StatItem[] = [
-    {
-      label: 'Flights',
-      value: stats.total_flights,
-      icon: 'flight',
-      color: 'text-[#63d1eb]',
-      bgColor: 'bg-[#63d1eb]/10',
-      glowColor: 'shadow-[0_0_15px_rgba(99,209,235,0.3)]',
-    },
-    {
-      label: 'Anomalies',
-      value: stats.total_anomalies,
-      icon: 'warning',
-      color: 'text-orange-400',
-      bgColor: 'bg-orange-500/10',
-      glowColor: 'shadow-[0_0_15px_rgba(251,146,60,0.3)]',
-    },
-    {
-      label: 'Go-Around',
-      value: stats.go_arounds,
-      icon: '360',
-      color: 'text-yellow-400',
-      bgColor: 'bg-yellow-500/10',
-      glowColor: 'shadow-[0_0_15px_rgba(250,204,21,0.3)]',
-    },
     {
       label: 'Emergency',
       value: stats.emergency_codes,
@@ -119,50 +121,72 @@ export function StatsCard({ mode, selectedDate, onDateChange }: StatsCardProps) 
       glowColor: 'shadow-[0_0_15px_rgba(248,113,113,0.3)]',
     },
     {
-      label: 'Holding',
-      value: stats.holding_patterns,
-      icon: 'sync',
+      label: 'Safety',
+      value: stats.safety_events,
+      icon: 'shield',
+      color: 'text-orange-400',
+      bgColor: 'bg-orange-500/10',
+      glowColor: 'shadow-[0_0_15px_rgba(251,146,60,0.3)]',
+    },
+    {
+      label: 'Military',
+      value: stats.military_flights ?? 0,
+      icon: 'military_tech',
+      color: 'text-yellow-400',
+      bgColor: 'bg-yellow-500/10',
+      glowColor: 'shadow-[0_0_15px_rgba(250,204,21,0.3)]',
+    },
+    {
+      label: 'Anomalies',
+      value: calculatedAnomalies,  // Frontend calculated sum
+      icon: 'warning',
       color: 'text-purple-400',
       bgColor: 'bg-purple-500/10',
       glowColor: 'shadow-[0_0_15px_rgba(192,132,252,0.3)]',
     },
     {
-      label: 'Proximity',
-      value: stats.near_miss,
-      icon: 'compare_arrows',
+      label: 'Traffic',
+      value: calculatedTraffic,  // Sum of holding pattern + go-around + return to field + unplanned landing
+      icon: 'traffic',
       color: 'text-[#00ffa3]',
       bgColor: 'bg-[#00ffa3]/10',
       glowColor: 'shadow-[0_0_15px_rgba(0,255,163,0.3)]',
     },
+    {
+      label: 'Flights',
+      value: stats.total_flights,
+      icon: 'flight',
+      color: 'text-[#63d1eb]',
+      bgColor: 'bg-[#63d1eb]/10',
+      glowColor: 'shadow-[0_0_15px_rgba(99,209,235,0.3)]',
+    },
   ];
 
   return (
-    <div className="px-4 py-4 border-b border-white/5 bg-black/20 backdrop-blur-sm">
+    <div className="px-6 py-4 border-b border-white/5 bg-black/20 backdrop-blur-sm">
       {/* Date Picker Row */}
-      <div className="flex items-center justify-between mb-4">
-        <span className="text-[10px] text-gray-400 uppercase tracking-widest font-bold">Overview</span>
+      <div className="flex items-center justify-between mb-3">
+        <span className="text-xs font-medium text-gray-400 uppercase tracking-wider">Overview</span>
         <DatePicker selectedDate={selectedDate} onDateChange={onDateChange} />
       </div>
       
-      {/* Stats Grid */}
-      <div className="grid grid-cols-3 gap-2.5">
+      {/* Stats Grid - smaller cards matching reference */}
+      <div className="grid grid-cols-3 gap-2">
         {statItems.map((stat) => (
           <div
             key={stat.label}
-            className={`overview-card flex flex-col items-center justify-center py-3 px-2 rounded-xl group cursor-default ${stat.glowColor}`}
+            className="overview-card rounded p-3 flex flex-col items-center justify-center h-[72px] group cursor-default"
           >
             {/* Icon */}
-            <div className={`w-8 h-8 rounded-lg ${stat.bgColor} flex items-center justify-center mb-2 transition-transform group-hover:scale-110`}>
-              <span className={`material-symbols-outlined text-lg ${stat.color} drop-shadow-[0_0_8px_currentColor]`}>
-                {stat.icon}
-              </span>
-            </div>
+            <span className={`material-symbols-outlined text-lg mb-1 ${stat.color}`} style={{ textShadow: `0 0 15px currentColor` }}>
+              {stat.icon}
+            </span>
             {/* Value */}
-            <span className={`font-mono text-lg font-bold ${stat.color} drop-shadow-[0_0_10px_currentColor]`}>
+            <span className={`text-xl font-mono font-bold ${stat.color}`} style={{ textShadow: `0 0 15px currentColor` }}>
               {loading ? '—' : (stat.value == null ? '—' : stat.value.toLocaleString())}
             </span>
             {/* Label */}
-            <span className="text-[9px] text-gray-500 mt-0.5 uppercase tracking-wider font-medium">{stat.label}</span>
+            <span className="text-[10px] text-gray-500 uppercase">{stat.label}</span>
           </div>
         ))}
       </div>

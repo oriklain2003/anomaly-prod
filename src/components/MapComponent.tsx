@@ -33,7 +33,7 @@ export function MapComponent({ onMouseMove, selectedFlight, activeLayers, mode =
   const [isMapReady, setIsMapReady] = useState(false);
   const apiKey = 'r7kaQpfNDVZdaVp23F1r';
 
-  // Create custom marker element for takeoff (green)
+  // Create custom marker element for takeoff/origin (green)
   const createStartMarkerElement = () => {
     const el = document.createElement('div');
     el.className = 'custom-marker start-marker';
@@ -48,13 +48,13 @@ export function MapComponent({ onMouseMove, selectedFlight, activeLayers, mode =
     return el;
   };
 
-  // Create custom marker element for landing/current (cyan)
+  // Create custom marker element for landing/destination (red)
   const createEndMarkerElement = (callsign?: string) => {
     const el = document.createElement('div');
     el.className = 'custom-marker end-marker';
     el.innerHTML = `
       <div style="position: relative; display: flex; flex-direction: column; align-items: center;">
-        ${callsign ? `<div style="background: rgba(0,0,0,0.8); color: #63d1eb; padding: 2px 8px; border-radius: 4px; font-size: 11px; font-weight: bold; font-family: monospace; margin-bottom: 4px; border: 1px solid rgba(99, 209, 235, 0.4); box-shadow: 0 0 10px rgba(99, 209, 235, 0.3);">${callsign}</div>` : ''}
+        ${callsign ? `<div style="background: rgba(0,0,0,0.8); color: #ef4444; padding: 2px 8px; border-radius: 4px; font-size: 11px; font-weight: bold; font-family: monospace; margin-bottom: 4px; border: 1px solid rgba(239, 68, 68, 0.4); box-shadow: 0 0 10px rgba(239, 68, 68, 0.3);">${callsign}</div>` : ''}
         <div style="position: relative; display: flex; align-items: center; justify-content: center;">
           <div style="position: absolute; width: 44px; height: 44px; background: rgba(239, 68, 68, 0.2); border-radius: 50%; animation: pulse 2s infinite;"></div>
           <div style="width: 32px; height: 32px; background: linear-gradient(135deg, #ef4444 0%, #dc2626 100%); border-radius: 50%; display: flex; align-items: center; justify-content: center; box-shadow: 0 0 15px rgba(239, 68, 68, 0.6), inset 0 2px 4px rgba(255,255,255,0.3); border: 2px solid rgba(255,255,255,0.3);">
@@ -887,25 +887,29 @@ export function MapComponent({ onMouseMove, selectedFlight, activeLayers, mode =
         },
       });
 
-      // Start marker (first point - green takeoff icon)
-      const firstPoint = flightTrack.points[0];
+      // Determine start and end points based on timestamp
+      // Find the point with the earliest timestamp (origin) and latest timestamp (destination)
+      const sortedByTime = [...flightTrack.points].sort((a, b) => a.timestamp - b.timestamp);
+      const startPoint = sortedByTime[0]; // Earliest timestamp = takeoff/origin
+      const endPoint = sortedByTime[sortedByTime.length - 1]; // Latest timestamp = landing/current
+
+      // Start marker (earliest point - green takeoff icon at ORIGIN)
       startMarkerRef.current = new maplibregl.Marker({
         element: createStartMarkerElement(),
         anchor: 'center',
       })
-        .setLngLat([firstPoint.lon, firstPoint.lat])
+        .setLngLat([startPoint.lon, startPoint.lat])
         .addTo(map.current!);
 
-      // End marker (last point - red landing icon with label)
+      // End marker (latest point - red landing icon with label at DESTINATION)
       // In live mode, don't show end marker since flight is still moving
       if (mode !== 'live') {
-        const lastPoint = flightTrack.points[flightTrack.points.length - 1];
         const callsign = selectedFlight?.callsign || selectedFlight?.flight_id;
         endMarkerRef.current = new maplibregl.Marker({
           element: createEndMarkerElement(callsign),
           anchor: 'bottom',
         })
-          .setLngLat([lastPoint.lon, lastPoint.lat])
+          .setLngLat([endPoint.lon, endPoint.lat])
           .addTo(map.current!);
       }
 

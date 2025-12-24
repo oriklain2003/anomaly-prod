@@ -261,6 +261,8 @@ export interface TaggedStatsOverview {
   near_miss: number;
   holding_patterns: number;
   military_flights: number;
+  return_to_field: number;
+  unplanned_landing: number;
   avg_severity: number;
 }
 
