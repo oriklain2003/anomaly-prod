@@ -3,6 +3,7 @@ import { Header } from './Header';
 import { OperationsSidebar } from './OperationsSidebar';
 import { MapArea } from './MapArea';
 import { TacticalChat } from './TacticalChat';
+import { ReplayModal, type ReplayEvent } from './ReplayModal';
 import type { SelectedFlight } from '../types';
 import { fetchLiveResearchTrack, fetchLiveAnomalies } from '../api';
 
@@ -66,6 +67,13 @@ function useAlertSound() {
   return playAlert;
 }
 
+// Replay data interface
+interface ReplayData {
+  mainFlightId: string;
+  secondaryFlightIds: string[];
+  events: ReplayEvent[];
+}
+
 export function Layout() {
   const [selectedFlight, setSelectedFlight] = useState<SelectedFlight | null>(null);
   const [mode, setMode] = useState<'live' | 'history'>('history');
@@ -75,7 +83,23 @@ export function Layout() {
     return today;
   });
   
+  // Replay modal state - lifted to Layout for fullscreen display
+  const [showReplay, setShowReplay] = useState(false);
+  const [replayData, setReplayData] = useState<ReplayData | null>(null);
+  
   const playAlert = useAlertSound();
+  
+  // Handler to open replay modal - passed to TacticalChat
+  const handleOpenReplay = useCallback((data: ReplayData) => {
+    setReplayData(data);
+    setShowReplay(true);
+  }, []);
+  
+  // Handler to close replay modal
+  const handleCloseReplay = useCallback(() => {
+    setShowReplay(false);
+    setReplayData(null);
+  }, []);
 
   const handleFlightSelect = (flight: SelectedFlight) => {
     setSelectedFlight(flight);
@@ -189,9 +213,19 @@ export function Layout() {
         <aside className="w-[420px] flex flex-col bg-bg-panel border-l border-border-dim z-20 shadow-2xl shrink-0 relative border-l-red-900/20">
           {/* Top gradient line */}
           <div className="absolute top-0 left-0 right-0 h-[1px] bg-gradient-to-r from-transparent via-red-900/50 to-transparent" />
-          <TacticalChat selectedFlight={selectedFlight} />
+          <TacticalChat selectedFlight={selectedFlight} onOpenReplay={handleOpenReplay} />
         </aside>
       </div>
+      
+      {/* Replay Modal - Rendered at top level for fullscreen display */}
+      {showReplay && replayData && (
+        <ReplayModal
+          mainFlightId={replayData.mainFlightId}
+          secondaryFlightIds={replayData.secondaryFlightIds}
+          events={replayData.events}
+          onClose={handleCloseReplay}
+        />
+      )}
     </div>
   );
 }

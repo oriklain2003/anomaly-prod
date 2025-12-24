@@ -3,7 +3,7 @@ import clsx from 'clsx';
 import { Mic, Send, Paperclip, Plus, Play } from 'lucide-react';
 import { ChatMessage, type Message } from './ChatMessage';
 import { AlertCard } from './AlertCard';
-import { ReplayModal, type ReplayEvent } from './ReplayModal';
+import type { ReplayEvent } from './ReplayModal';
 import type { SelectedFlight } from '../types';
 import { sendChatMessage, analyzeWithAI } from '../api';
 import { getAnomalyReason } from '../utils/reason';
@@ -11,8 +11,16 @@ import { getAnomalyReason } from '../utils/reason';
 type ChatMode = 'current' | 'general';
 type ChatLanguage = 'en' | 'he';
 
+// Replay data interface (same as Layout)
+interface ReplayData {
+  mainFlightId: string;
+  secondaryFlightIds: string[];
+  events: ReplayEvent[];
+}
+
 interface TacticalChatProps {
   selectedFlight: SelectedFlight | null;
+  onOpenReplay?: (data: ReplayData) => void;
 }
 
 // Translations
@@ -75,13 +83,12 @@ function OnyxIcon({ className = "w-4 h-4" }: { className?: string }) {
   );
 }
 
-export function TacticalChat({ selectedFlight }: TacticalChatProps) {
+export function TacticalChat({ selectedFlight, onOpenReplay }: TacticalChatProps) {
   const [mode, setMode] = useState<ChatMode>('general');
   const [input, setInput] = useState('');
   const [language, setLanguage] = useState<ChatLanguage>('en');
   const [messages, setMessages] = useState<Message[]>([getWelcomeMessage('en')]);
   const [isLoading, setIsLoading] = useState(false);
-  const [showReplay, setShowReplay] = useState(false);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   
   const t = TRANSLATIONS[language];
@@ -321,7 +328,15 @@ export function TacticalChat({ selectedFlight }: TacticalChatProps) {
         <div className="shrink-0 px-4 py-3 border-b border-white/5 space-y-2">
           <FlightContextCard 
             flight={selectedFlight} 
-            onReplay={() => setShowReplay(true)}
+            onReplay={() => {
+              if (onOpenReplay) {
+                onOpenReplay({
+                  mainFlightId: selectedFlight.flight_id,
+                  secondaryFlightIds: getSecondaryFlightIds(),
+                  events: getReplayEvents(),
+                });
+              }
+            }}
             translations={t}
           />
         </div>
@@ -409,15 +424,6 @@ export function TacticalChat({ selectedFlight }: TacticalChatProps) {
         </div>
       </div>
 
-      {/* Replay Modal */}
-      {showReplay && selectedFlight && (
-        <ReplayModal
-          mainFlightId={selectedFlight.flight_id}
-          secondaryFlightIds={getSecondaryFlightIds()}
-          events={getReplayEvents()}
-          onClose={() => setShowReplay(false)}
-        />
-      )}
     </div>
   );
 }

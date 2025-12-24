@@ -5,6 +5,7 @@ import { X, Play, Pause, SkipBack, SkipForward, AlertTriangle, MapPin, Wrench, C
 import { fetchFeedbackTrack, fetchReplayOtherFlight } from '../api';
 import type { TrackPoint } from '../types';
 import clsx from 'clsx';
+import { WORLD_AIRPORTS } from '../data/airports';
 
 export interface ReplayEvent {
   timestamp: number;
@@ -32,20 +33,6 @@ type TelemetryData =
   | ({ status: 'active' | 'ended' } & TrackPoint);
 
 const COLORS = ['#06b6d4', '#ef4444', '#10b981', '#f59e0b', '#8b5cf6'];
-
-const AIRPORTS = [
-  { code: "LLBG", name: "Ben Gurion Intl", lat: 32.011389, lon: 34.886667 },
-  { code: "LLER", name: "Ramon Intl", lat: 29.723704, lon: 35.01145 },
-  { code: "LLHA", name: "Haifa", lat: 32.809444, lon: 35.043056 },
-  { code: "LLBS", name: "Beersheba", lat: 31.287, lon: 34.723 },
-  { code: "LLOV", name: "Ovda", lat: 29.940, lon: 34.935 },
-  { code: "LCRA", name: "RAF Akrotiri", lat: 34.5900, lon: 32.9870 },
-  { code: "OLBA", name: "Beirut", lat: 33.820889, lon: 35.488389 },
-  { code: "OJAI", name: "Amman", lat: 31.722556, lon: 35.993214 },
-  { code: "OJAQ", name: "Aqaba", lat: 29.611, lon: 35.018 },
-  { code: "LCLK", name: "Larnaca", lat: 34.875, lon: 33.625 },
-  { code: "OSDI", name: "Damascus", lat: 33.411, lon: 36.516 }
-];
 
 export function ReplayModal({ mainFlightId, secondaryFlightIds = [], events = [], onClose }: ReplayModalProps) {
   const mapContainer = useRef<HTMLDivElement>(null);
@@ -482,12 +469,12 @@ export function ReplayModal({ mainFlightId, secondaryFlightIds = [], events = []
   const getNearestAirport = (lat: number, lon: number) => {
     if (!airportDistanceTool) return null;
 
-    let nearest: { code: string; name: string; dist: number } | null = null;
+    let nearest: { code: string; name: string; country: string; dist: number } | null = null;
     
-    for (const airport of AIRPORTS) {
+    for (const airport of WORLD_AIRPORTS) {
       const dist = getDistanceNM(lat, lon, airport.lat, airport.lon);
       if (!nearest || dist < nearest.dist) {
-        nearest = { code: airport.code, name: airport.name, dist };
+        nearest = { code: airport.code, name: airport.name, country: airport.country, dist };
       }
     }
     
@@ -585,7 +572,7 @@ export function ReplayModal({ mainFlightId, secondaryFlightIds = [], events = []
                   onClick={() => setAirportDistanceTool(!airportDistanceTool)}
                   className="w-full flex items-center justify-between p-2 rounded hover:bg-white/5 text-sm text-white transition-colors"
                 >
-                  <span>Nearest Israeli Airport</span>
+                  <span>Nearest Airport</span>
                   {airportDistanceTool && <Check className="w-4 h-4 text-primary" />}
                 </button>
               </div>
@@ -703,10 +690,13 @@ export function ReplayModal({ mainFlightId, secondaryFlightIds = [], events = []
 
                         {nearestAirport && (
                           <div className="mt-2 pt-2 border-t border-white/10">
-                            <div className="text-[9px] font-bold text-white/40 uppercase mb-1">Nearest Israeli Airport</div>
+                            <div className="text-[9px] font-bold text-white/40 uppercase mb-1">Nearest Airport</div>
                             <div className="flex justify-between items-center bg-green-500/10 px-1.5 py-1 rounded">
                               <span className="font-mono text-green-400">{nearestAirport.code}</span>
                               <span className="font-mono text-green-300">{nearestAirport.dist.toFixed(1)} NM</span>
+                            </div>
+                            <div className="text-[8px] text-white/50 mt-0.5 truncate" title={nearestAirport.name}>
+                              {nearestAirport.name} ({nearestAirport.country})
                             </div>
                           </div>
                         )}

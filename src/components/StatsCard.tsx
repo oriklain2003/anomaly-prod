@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { fetchStatsOverview, fetchTaggedStatsOverview } from '../api';
+import { fetchStatsOverview } from '../api';
 import { DatePicker } from './DatePicker';
 import type { OverviewStats } from '../types';
 
@@ -18,19 +18,19 @@ interface StatItem {
   glowColor: string;
 }
 
-// Mock stats for fallback
+// Mock stats for fallback - use -1 to indicate API failure
 const MOCK_STATS: OverviewStats = {
-  total_flights: 1247,
-  total_anomalies: 23,
-  safety_events: 5,
-  go_arounds: 8,
-  emergency_codes: 2,
-  near_miss: 1,
-  holding_patterns: 3,
-  military_flights: 12,
-  traffic_count: 45,
-  return_to_field: 2,
-  unplanned_landing: 1,
+  total_flights: -1,
+  total_anomalies: -1,
+  safety_events: -1,
+  go_arounds: -1,
+  emergency_codes: -1,
+  near_miss: -1,
+  holding_patterns: -1,
+  military_flights: -1,
+  traffic_count: -1,
+  return_to_field: -1,
+  unplanned_landing: -1,
 };
 
 export function StatsCard({ mode, selectedDate, onDateChange }: StatsCardProps) {
@@ -53,37 +53,22 @@ export function StatsCard({ mode, selectedDate, onDateChange }: StatsCardProps) 
         const startTs = Math.floor(startOfDay.getTime() / 1000);
         const endTs = Math.floor(endOfDay.getTime() / 1000);
 
-        let data: OverviewStats;
-        if (mode === 'live') {
-          const rawData = await fetchStatsOverview(startTs, endTs);
-          data = {
-            ...rawData,
-            military_flights: rawData.military_flights ?? 0,
-            return_to_field: rawData.return_to_field ?? 0,
-            unplanned_landing: rawData.unplanned_landing ?? 0,
-          };
-        } else {
-          const taggedData = await fetchTaggedStatsOverview(startTs, endTs);
-          data = {
-            total_flights: taggedData.total_flights,
-            total_anomalies: taggedData.total_anomalies,
-            safety_events: taggedData.safety_events,
-            go_arounds: taggedData.go_arounds,
-            emergency_codes: taggedData.emergency_codes,
-            near_miss: taggedData.near_miss,
-            holding_patterns: taggedData.holding_patterns,
-            military_flights: taggedData.military_flights ?? 0,
-            return_to_field: taggedData.return_to_field ?? 0,
-            unplanned_landing: taggedData.unplanned_landing ?? 0,
-          };
-        }
+        // Always use research_new.db stats for both live and history mode
+        // (feedback_tagged.db only has manually tagged flights, not all flights)
+        const rawData = await fetchStatsOverview(startTs, endTs);
+        const data: OverviewStats = {
+          ...rawData,
+          military_flights: rawData.military_flights ?? 0,
+          return_to_field: rawData.return_to_field ?? 0,
+          unplanned_landing: rawData.unplanned_landing ?? 0,
+        };
 
         if (mounted) {
           setStats(data);
           setLoading(false);
         }
       } catch (err) {
-        console.warn('Using mock stats:', err);
+        console.error('Stats API failed, using fallback:', err);
         if (mounted) {
           setStats(MOCK_STATS);
           setLoading(false);
