@@ -300,7 +300,7 @@ export function TacticalChat({ selectedFlight, onOpenReplay }: TacticalChatProps
                 : "border-b-2 border-transparent text-gray-400 hover:text-white"
             )}
           >
-            {t.current} (נוכחי)
+            {t.current} ({t.currentOther})
           </button>
           <button
             onClick={() => setMode('general')}
@@ -311,7 +311,7 @@ export function TacticalChat({ selectedFlight, onOpenReplay }: TacticalChatProps
                 : "border-b-2 border-transparent text-gray-400 hover:text-white"
             )}
           >
-            {t.general} (כללי)
+            {t.general} ({t.generalOther})
           </button>
         </div>
       </div>

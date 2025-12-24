@@ -1,8 +1,74 @@
 import { useEffect, useState, useRef, useCallback } from 'react';
-import { Loader2, AlertTriangle } from 'lucide-react';
+import { AlertTriangle } from 'lucide-react';
 import type { AnomalyReport, FlightStatus, SelectedFlight } from '../types';
 import { FlightRow } from './FlightRow';
 import { fetchLiveAnomalies, fetchSystemReports, fetchFlightStatus, fetchUnifiedTrack, fetchSystemReportTrack, fetchLiveAnomaliesSince, fetchLiveResearchTrack } from '../api';
+
+// Orbiting plane loader component
+function OrbitingPlaneLoader() {
+  return (
+    <div className="relative w-24 h-24">
+      {/* Orbit path */}
+      <div className="absolute inset-0 rounded-full border border-dashed border-[#63d1eb]/30" />
+      
+      {/* Center dot */}
+      <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-2 h-2 rounded-full bg-[#63d1eb]/40" />
+      
+      {/* Orbiting plane */}
+      <div 
+        className="absolute inset-0 animate-[orbit_2s_linear_infinite]"
+        style={{ transformOrigin: 'center center' }}
+      >
+        <div className="absolute top-0 left-1/2 -translate-x-1/2 -translate-y-1/2">
+          <span 
+            className="material-symbols-outlined text-[#63d1eb] text-xl drop-shadow-[0_0_8px_rgba(99,209,235,0.8)]"
+            style={{ transform: 'rotate(90deg)' }}
+          >
+            flight
+          </span>
+        </div>
+      </div>
+      
+      {/* Trailing glow effect - behind the main plane */}
+      <div 
+        className="absolute inset-0 animate-[orbit_2s_linear_infinite] opacity-40"
+        style={{ transformOrigin: 'center center', animationDelay: '0.12s' }}
+      >
+        <div className="absolute top-0 left-1/2 -translate-x-1/2 -translate-y-1/2">
+          <span 
+            className="material-symbols-outlined text-[#63d1eb]/40 text-lg blur-[2px]"
+            style={{ transform: 'rotate(90deg)' }}
+          >
+            flight
+          </span>
+        </div>
+      </div>
+      
+      {/* Second trailing glow - further behind */}
+      <div 
+        className="absolute inset-0 animate-[orbit_2s_linear_infinite] opacity-20"
+        style={{ transformOrigin: 'center center', animationDelay: '0.24s' }}
+      >
+        <div className="absolute top-0 left-1/2 -translate-x-1/2 -translate-y-1/2">
+          <span 
+            className="material-symbols-outlined text-[#63d1eb]/25 text-base blur-[3px]"
+            style={{ transform: 'rotate(90deg)' }}
+          >
+            flight
+          </span>
+        </div>
+      </div>
+      
+      {/* Inject keyframes */}
+      <style>{`
+        @keyframes orbit {
+          from { transform: rotate(0deg); }
+          to { transform: rotate(360deg); }
+        }
+      `}</style>
+    </div>
+  );
+}
 
 // Polling disabled - data doesn't get updated in real-time
 
@@ -73,11 +139,7 @@ export function DataStreamTable({ mode, selectedFlight, onFlightSelect, onFlight
 
     const loadReports = async () => {
       try {
-        if (!loading) {
-          // Only show loading on initial fetch
-        } else {
-          setLoading(true);
-        }
+        setLoading(true);
         setError(null);
 
         let data: AnomalyReport[];
@@ -202,9 +264,11 @@ export function DataStreamTable({ mode, selectedFlight, onFlightSelect, onFlight
   if (loading) {
     return (
       <div className="flex-1 flex items-center justify-center">
-        <div className="flex flex-col items-center gap-3 text-gray-500">
-          <Loader2 className="w-6 h-6 animate-spin" />
-          <span className="text-xs">Loading {mode === 'live' ? 'live data' : 'system reports'}...</span>
+        <div className="flex flex-col items-center gap-4 text-gray-500">
+          <OrbitingPlaneLoader />
+          <span className="text-xs text-[#63d1eb]/70 font-mono tracking-wider">
+            {mode === 'live' ? 'SCANNING AIRSPACE...' : 'LOADING REPORTS...'}
+          </span>
         </div>
       </div>
     );

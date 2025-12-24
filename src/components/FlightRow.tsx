@@ -204,14 +204,14 @@ export function FlightRow({
           {/* Origin/Destination boxes */}
           <div className="grid grid-cols-2 gap-4 mb-4">
             <div className="flex items-center gap-3 p-2 rounded bg-white/5 border border-white/5">
-              <span className="material-symbols-outlined text-[#63d1eb] text-lg">location_on</span>
+              <span className="material-symbols-outlined text-[#63d1eb] text-lg">flight_takeoff</span>
               <div className="flex flex-col">
                 <span className="text-[9px] text-gray-500 uppercase tracking-widest">From</span>
                 <span className="text-sm font-mono text-white font-medium">{origin}</span>
               </div>
             </div>
             <div className="flex items-center gap-3 p-2 rounded bg-white/5 border border-white/5">
-              <span className="material-symbols-outlined text-[#63d1eb] text-lg">flight_takeoff</span>
+              <span className="material-symbols-outlined text-[#00ffa3] text-lg">flight_land</span>
               <div className="flex flex-col">
                 <span className="text-[9px] text-gray-500 uppercase tracking-widest">To</span>
                 <span className="text-sm font-mono text-white font-medium">{destination}</span>

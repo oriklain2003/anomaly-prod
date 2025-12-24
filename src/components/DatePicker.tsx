@@ -1,4 +1,5 @@
 import { useState, useRef, useEffect } from 'react';
+import { createPortal } from 'react-dom';
 import { Calendar, ChevronDown, ChevronLeft, ChevronRight } from 'lucide-react';
 import clsx from 'clsx';
 
@@ -57,7 +58,9 @@ export function DatePicker({ selectedDate, onDateChange }: DatePickerProps) {
   const [showCalendar, setShowCalendar] = useState(false);
   const [calendarMonth, setCalendarMonth] = useState(new Date());
   const [searchedDates, setSearchedDates] = useState<Date[]>([]);
+  const [dropdownPosition, setDropdownPosition] = useState({ top: 0, right: 0 });
   const containerRef = useRef<HTMLDivElement>(null);
+  const buttonRef = useRef<HTMLButtonElement>(null);
 
   // Load searched dates from localStorage on mount
   useEffect(() => {
@@ -65,10 +68,28 @@ export function DatePicker({ selectedDate, onDateChange }: DatePickerProps) {
     setSearchedDates(saved);
   }, []);
 
+  // Update dropdown position when opening
+  useEffect(() => {
+    if (isOpen && buttonRef.current) {
+      const rect = buttonRef.current.getBoundingClientRect();
+      setDropdownPosition({
+        top: rect.bottom + 4,
+        right: window.innerWidth - rect.right,
+      });
+    }
+  }, [isOpen]);
+
   // Close dropdown when clicking outside
   useEffect(() => {
     const handleClickOutside = (event: MouseEvent) => {
-      if (containerRef.current && !containerRef.current.contains(event.target as Node)) {
+      const target = event.target as Node;
+      // Check if click is outside both the container and the dropdown portal
+      const dropdownEl = document.getElementById('date-picker-dropdown');
+      if (
+        containerRef.current && 
+        !containerRef.current.contains(target) &&
+        (!dropdownEl || !dropdownEl.contains(target))
+      ) {
         setIsOpen(false);
         setShowCalendar(false);
       }
@@ -141,6 +162,7 @@ export function DatePicker({ selectedDate, onDateChange }: DatePickerProps) {
     <div ref={containerRef} className="relative">
       {/* Trigger Button */}
       <button
+        ref={buttonRef}
         onClick={() => setIsOpen(!isOpen)}
         className="flex items-center gap-2 px-3 py-1.5 rounded-md bg-black/40 border border-white/10 hover:border-white/20 transition-colors text-[11px]"
       >
@@ -149,9 +171,13 @@ export function DatePicker({ selectedDate, onDateChange }: DatePickerProps) {
         <ChevronDown className={clsx("w-3 h-3 text-gray-500 transition-transform", isOpen && "rotate-180")} />
       </button>
 
-      {/* Dropdown */}
-      {isOpen && (
-        <div className="absolute top-full right-0 mt-1 z-50 bg-bg-panel border border-white/10 rounded-lg shadow-xl overflow-hidden min-w-[180px]">
+      {/* Dropdown - rendered via portal to escape overflow:hidden */}
+      {isOpen && createPortal(
+        <div 
+          id="date-picker-dropdown"
+          className="fixed z-[9999] bg-bg-panel border border-white/10 rounded-lg shadow-xl overflow-hidden min-w-[180px]"
+          style={{ top: dropdownPosition.top, right: dropdownPosition.right }}
+        >
           {!showCalendar ? (
             <>
               {/* Recent Searched Dates List */}
@@ -263,7 +289,8 @@ export function DatePicker({ selectedDate, onDateChange }: DatePickerProps) {
               )}
             </>
           )}
-        </div>
+        </div>,
+        document.body
       )}
     </div>
   );
