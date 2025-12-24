@@ -448,11 +448,11 @@ function FlightContextCard({ flight, onReplay, translations: t }: FlightContextC
         <div className="flex items-center gap-2 flex-1">
           <span className="text-[9px] uppercase tracking-wider text-gray-500 font-bold">{t.route}</span>
           <div className="flex items-center gap-1.5 text-xs">
-            <span className="material-symbols-outlined text-[#63d1eb] text-sm">flight_takeoff</span>
+          <span className="material-symbols-outlined text-[#00ffa3] text-sm">flight_land</span>
             <span className="font-semibold text-white">{flight.origin || '---'}</span>
             <span className="material-symbols-outlined text-gray-500 text-[10px]">arrow_forward</span>
             <span className="font-semibold text-white">{flight.destination || '---'}</span>
-            <span className="material-symbols-outlined text-[#00ffa3] text-sm">flight_land</span>
+            <span className="material-symbols-outlined text-[#63d1eb] text-sm">flight_takeoff</span>
           </div>
         </div>
       </div>

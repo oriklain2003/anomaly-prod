@@ -206,32 +206,36 @@ export function Layout() {
       {/* Main Content Area */}
       <div className="flex-1 flex overflow-hidden">
         {/* Left Sidebar - Operations Control */}
-        <aside 
-          className={`flex flex-col bg-[#0B0C10] border-r border-white/5 z-20 shrink-0 shadow-2xl transition-all duration-300 ease-in-out relative ${
-            leftSidebarCollapsed ? 'w-0' : 'w-[420px]'
-          }`}
-        >
-          <div className={`w-[420px] h-full overflow-hidden flex flex-col ${leftSidebarCollapsed ? 'invisible' : 'visible'}`}>
-            <OperationsSidebar
-              mode={mode}
-              onModeChange={handleModeChange}
-              selectedFlight={selectedFlight}
-              onFlightSelect={handleFlightSelect}
-              onFlightUpdate={handleFlightUpdate}
-              selectedDate={selectedDate}
-              onDateChange={handleDateChange}
-              onNewAnomaly={handleNewAnomaly}
-            />
-          </div>
-          {/* Toggle button */}
+        <div className="relative z-20 shrink-0">
+          <aside 
+            className={`flex flex-col bg-[#0B0C10] border-r border-white/5 shadow-2xl transition-all duration-300 ease-in-out overflow-hidden h-full ${
+              leftSidebarCollapsed ? 'w-0' : 'w-[420px]'
+            }`}
+          >
+            <div className={`w-[420px] h-full overflow-hidden flex flex-col transition-opacity duration-200 ${leftSidebarCollapsed ? 'opacity-0 pointer-events-none' : 'opacity-100'}`}>
+              <OperationsSidebar
+                mode={mode}
+                onModeChange={handleModeChange}
+                selectedFlight={selectedFlight}
+                onFlightSelect={handleFlightSelect}
+                onFlightUpdate={handleFlightUpdate}
+                selectedDate={selectedDate}
+                onDateChange={handleDateChange}
+                onNewAnomaly={handleNewAnomaly}
+              />
+            </div>
+          </aside>
+          {/* Toggle button - outside overflow-hidden */}
           <button
             onClick={() => setLeftSidebarCollapsed(!leftSidebarCollapsed)}
-            className="absolute -right-3 top-1/2 -translate-y-1/2 z-30 w-6 h-12 bg-[#0B0C10] border border-white/10 rounded-r-md flex items-center justify-center text-gray-400 hover:text-white hover:bg-[#1a1b20] transition-colors shadow-lg"
+            className={`absolute top-1/2 -translate-y-1/2 z-30 w-6 h-12 bg-[#0B0C10] border border-white/10 rounded-r-md flex items-center justify-center text-gray-400 hover:text-white hover:bg-[#1a1b20] transition-all duration-300 shadow-lg ${
+              leftSidebarCollapsed ? 'left-0' : 'left-[417px]'
+            }`}
             title={leftSidebarCollapsed ? 'Show Operations Control' : 'Hide Operations Control'}
           >
             {leftSidebarCollapsed ? <ChevronRight className="w-4 h-4" /> : <ChevronLeft className="w-4 h-4" />}
           </button>
-        </aside>
+        </div>
 
         {/* Center - Map Area */}
         <main className="flex-1 relative bg-black overflow-hidden z-10">
@@ -243,25 +247,29 @@ export function Layout() {
         </main>
 
         {/* Right Sidebar - Tactical Chat */}
-        <aside 
-          className={`flex flex-col bg-bg-panel border-l border-border-dim z-20 shadow-2xl shrink-0 relative border-l-red-900/20 transition-all duration-300 ease-in-out ${
-            rightSidebarCollapsed ? 'w-0' : 'w-[420px]'
-          }`}
-        >
-          {/* Top gradient line */}
-          <div className="absolute top-0 left-0 right-0 h-[1px] bg-gradient-to-r from-transparent via-red-900/50 to-transparent" />
-          <div className={`w-[420px] h-full overflow-hidden ${rightSidebarCollapsed ? 'invisible' : 'visible'}`}>
-            <TacticalChat selectedFlight={selectedFlight} onOpenReplay={handleOpenReplay} />
-          </div>
-          {/* Toggle button */}
+        <div className="relative z-20 shrink-0">
+          <aside 
+            className={`flex flex-col bg-bg-panel border-l border-border-dim shadow-2xl border-l-red-900/20 transition-all duration-300 ease-in-out overflow-hidden h-full ${
+              rightSidebarCollapsed ? 'w-0' : 'w-[420px]'
+            }`}
+          >
+            {/* Top gradient line */}
+            <div className="absolute top-0 left-0 right-0 h-[1px] bg-gradient-to-r from-transparent via-red-900/50 to-transparent" />
+            <div className={`w-[420px] h-full overflow-hidden transition-opacity duration-200 ${rightSidebarCollapsed ? 'opacity-0 pointer-events-none' : 'opacity-100'}`}>
+              <TacticalChat selectedFlight={selectedFlight} onOpenReplay={handleOpenReplay} />
+            </div>
+          </aside>
+          {/* Toggle button - outside overflow-hidden */}
           <button
             onClick={() => setRightSidebarCollapsed(!rightSidebarCollapsed)}
-            className="absolute -left-3 top-1/2 -translate-y-1/2 z-30 w-6 h-12 bg-bg-panel border border-white/10 rounded-l-md flex items-center justify-center text-gray-400 hover:text-white hover:bg-[#1a1b20] transition-colors shadow-lg"
+            className={`absolute top-1/2 -translate-y-1/2 z-30 w-6 h-12 bg-bg-panel border border-white/10 rounded-l-md flex items-center justify-center text-gray-400 hover:text-white hover:bg-[#1a1b20] transition-all duration-300 shadow-lg ${
+              rightSidebarCollapsed ? 'right-0' : 'right-[417px]'
+            }`}
             title={rightSidebarCollapsed ? 'Show Tactical Chat' : 'Hide Tactical Chat'}
           >
             {rightSidebarCollapsed ? <ChevronLeft className="w-4 h-4" /> : <ChevronRight className="w-4 h-4" />}
           </button>
-        </aside>
+        </div>
       </div>
       
       {/* Replay Modal - Rendered at top level for fullscreen display */}
