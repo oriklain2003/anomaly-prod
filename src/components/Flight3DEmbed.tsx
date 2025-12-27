@@ -4,7 +4,6 @@ import { OrbitControls, Line, Text, Stars } from '@react-three/drei';
 import * as THREE from 'three';
 import { Box, Maximize2, Play, Pause } from 'lucide-react';
 import type { TrackPoint, SelectedFlight } from '../types';
-import clsx from 'clsx';
 
 interface Flight3DEmbedProps {
   flight?: SelectedFlight;

@@ -94,7 +94,7 @@ export function Layout() {
   
   // AI Results state
   const [aiResults, setAiResults] = useState<AIResultsData | null>(null);
-  const [aiResultsLoading, setAiResultsLoading] = useState(false);
+  const [aiResultsLoading, _setAiResultsLoading] = useState(false);
   
   // Highlight state from AI chat - shown on main map
   const [highlightState, setHighlightState] = useState<HighlightState | null>(null);

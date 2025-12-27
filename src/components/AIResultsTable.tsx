@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { AlertTriangle, Sparkles, X, RefreshCw } from 'lucide-react';
+import { Sparkles, X, RefreshCw } from 'lucide-react';
 import type { AnomalyReport, SelectedFlight, StatFilter } from '../types';
 import { FlightRow } from './FlightRow';
 import { fetchUnifiedTrack, fetchSystemReportTrack, fetchLiveResearchTrack } from '../api';

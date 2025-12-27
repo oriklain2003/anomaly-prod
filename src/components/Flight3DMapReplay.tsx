@@ -646,7 +646,7 @@ function Aircraft3D({
   const glowRef = useRef<THREE.Mesh>(null);
   
   // Get the model path, scale, rotation fix, and offsets based on aircraft type/category
-  const { modelPath, scale, rotationFix, modelKey, offsetX, offsetY, offsetZ } = useMemo(() => {
+  const { modelPath, scale, rotationFix, offsetX, offsetY, offsetZ } = useMemo(() => {
     const info = getAircraftModelInfo(aircraftType, category);
     console.log(`[Aircraft3D] type="${aircraftType}" category="${category}" -> key="${info.modelKey}" path="${info.modelPath}"`);
     return info;
