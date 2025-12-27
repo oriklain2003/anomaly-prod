@@ -44,7 +44,6 @@ function generateDemoFlightData(): TrackPoint[] {
   let currentTime = startTime;
   let currentLat = startLat;
   let currentLon = startLon;
-  let _currentHeading = 45; // Northeast initially
   
   for (const phase of phases) {
     const steps = Math.floor(phase.duration / 5); // Point every 5 seconds
@@ -109,7 +108,6 @@ function generateDemoFlightData(): TrackPoint[] {
       
       currentLat += phase.latDelta;
       currentLon += phase.lonDelta;
-      currentHeading = (Math.atan2(phase.lonDelta, phase.latDelta) * 180 / Math.PI + 90 + 360) % 360;
     }
   }
   
