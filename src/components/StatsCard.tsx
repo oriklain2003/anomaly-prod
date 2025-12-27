@@ -1,12 +1,17 @@
 import { useEffect, useState } from 'react';
 import { fetchStatsOverview, fetchLiveStatsOverview } from '../api';
 import { DatePicker } from './DatePicker';
-import type { OverviewStats } from '../types';
+import type { OverviewStats, StatFilter } from '../types';
+import type { CalculatedStats } from './DataStreamTable';
+import clsx from 'clsx';
 
 interface StatsCardProps {
   mode: 'live' | 'history';
   selectedDate: Date;
   onDateChange: (date: Date) => void;
+  selectedFilter: StatFilter;
+  onFilterSelect: (filter: StatFilter) => void;
+  calculatedStats?: CalculatedStats | null; // Stats calculated from displayed reasons
 }
 
 interface StatItem {
@@ -16,6 +21,7 @@ interface StatItem {
   color: string;
   bgColor: string;
   glowColor: string;
+  filterKey: StatFilter;
 }
 
 // Mock stats for fallback - use -1 to indicate API failure
@@ -33,7 +39,7 @@ const MOCK_STATS: OverviewStats = {
   unplanned_landing: -1,
 };
 
-export function StatsCard({ mode, selectedDate, onDateChange }: StatsCardProps) {
+export function StatsCard({ mode, selectedDate, onDateChange, selectedFilter, onFilterSelect, calculatedStats }: StatsCardProps) {
   const [stats, setStats] = useState<OverviewStats>(MOCK_STATS);
   const [loading, setLoading] = useState(true);
 
@@ -89,68 +95,72 @@ export function StatsCard({ mode, selectedDate, onDateChange }: StatsCardProps) 
     };
   }, [mode, selectedDate]);
 
-  // Use total_anomalies directly from backend (count of distinct flights with anomalies)
-  const calculatedAnomalies = stats.total_anomalies || 0;
-
-  // Calculate traffic as sum of: holding pattern, go-around, return to field, unplanned landing
-  const calculatedTraffic = (stats.holding_patterns || 0) + 
-                            (stats.go_arounds || 0) + 
-                            (stats.return_to_field || 0) + 
-                            (stats.unplanned_landing || 0);
+  // Use client-side calculated stats (matches glow logic) when available
+  // Only use API stats for total_flights (since we can't count all flights client-side)
+  const displayAnomalies = calculatedStats?.anomalies ?? stats.total_anomalies ?? 0;
+  const displayEmergency = calculatedStats?.emergency ?? stats.emergency_codes ?? 0;
+  const displayTraffic = calculatedStats?.traffic ?? (
+    (stats.holding_patterns || 0) + (stats.go_arounds || 0) + 
+    (stats.return_to_field || 0) + (stats.unplanned_landing || 0)
+  );
+  const displayMilitary = calculatedStats?.military ?? stats.military_flights ?? 0;
+  const displaySafety = calculatedStats?.safety ?? stats.safety_events ?? 0;
 
   const statItems: StatItem[] = [
-
     {
       label: 'Flights',
-      value: stats.total_flights,
+      value: stats.total_flights, // Keep from API - represents all flights for the day
       icon: 'flight',
       color: 'text-[#63d1eb]',
       bgColor: 'bg-[#63d1eb]/10',
       glowColor: 'shadow-[0_0_15px_rgba(99,209,235,0.3)]',
+      filterKey: 'flights',
     },
     {
       label: 'Anomalies',
-      value: calculatedAnomalies,  // Frontend calculated sum
+      value: displayAnomalies,
       icon: 'warning',
       color: 'text-purple-400',
       bgColor: 'bg-purple-500/10',
       glowColor: 'shadow-[0_0_15px_rgba(192,132,252,0.3)]',
+      filterKey: 'anomalies',
     },
     {
       label: 'Emergency',
-      value: stats.emergency_codes,
+      value: displayEmergency,
       icon: 'crisis_alert',
       color: 'text-red-400',
       bgColor: 'bg-red-500/10',
       glowColor: 'shadow-[0_0_15px_rgba(248,113,113,0.3)]',
+      filterKey: 'emergency',
     },
-
-
     {
       label: 'Traffic',
-      value: calculatedTraffic,  // Sum of holding pattern + go-around + return to field + unplanned landing
+      value: displayTraffic,
       icon: 'traffic',
       color: 'text-[#00ffa3]',
       bgColor: 'bg-[#00ffa3]/10',
       glowColor: 'shadow-[0_0_15px_rgba(0,255,163,0.3)]',
+      filterKey: 'traffic',
     },
     {
       label: 'Military',
-      value: stats.military_flights ?? 0,
+      value: displayMilitary,
       icon: 'military_tech',
       color: 'text-yellow-400',
       bgColor: 'bg-yellow-500/10',
       glowColor: 'shadow-[0_0_15px_rgba(250,204,21,0.3)]',
+      filterKey: 'military',
     },
     {
       label: 'Safety',
-      value: stats.safety_events,
+      value: displaySafety,
       icon: 'shield',
       color: 'text-orange-400',
       bgColor: 'bg-orange-500/10',
       glowColor: 'shadow-[0_0_15px_rgba(251,146,60,0.3)]',
+      filterKey: 'safety',
     },
-
   ];
 
   return (
@@ -163,23 +173,46 @@ export function StatsCard({ mode, selectedDate, onDateChange }: StatsCardProps) 
       
       {/* Stats Grid - smaller cards matching reference */}
       <div className="grid grid-cols-3 gap-2">
-        {statItems.map((stat) => (
-          <div
-            key={stat.label}
-            className="overview-card rounded p-3 flex flex-col items-center justify-center h-[72px] group cursor-default"
-          >
-            {/* Icon */}
-            <span className={`material-symbols-outlined text-lg mb-1 ${stat.color}`} style={{ textShadow: `0 0 15px currentColor` }}>
-              {stat.icon}
-            </span>
-            {/* Value */}
-            <span className={`text-xl font-mono font-bold ${stat.color}`} style={{ textShadow: `0 0 15px currentColor` }}>
-              {loading ? '—' : (stat.value == null ? '—' : stat.value.toLocaleString())}
-            </span>
-            {/* Label */}
-            <span className="text-[10px] text-gray-500 uppercase">{stat.label}</span>
-          </div>
-        ))}
+        {statItems.map((stat) => {
+          const isSelected = selectedFilter === stat.filterKey;
+          return (
+            <div
+              key={stat.label}
+              onClick={() => onFilterSelect(isSelected ? null : stat.filterKey)}
+              className={clsx(
+                "overview-card rounded p-3 flex flex-col items-center justify-center h-[72px] group cursor-pointer transition-all duration-300",
+                isSelected && "ring-2 ring-offset-1 ring-offset-transparent scale-105",
+                isSelected && stat.filterKey === 'flights' && "ring-[#63d1eb] bg-[#63d1eb]/20",
+                isSelected && stat.filterKey === 'anomalies' && "ring-purple-400 bg-purple-500/20",
+                isSelected && stat.filterKey === 'emergency' && "ring-red-400 bg-red-500/20",
+                isSelected && stat.filterKey === 'traffic' && "ring-[#00ffa3] bg-[#00ffa3]/20",
+                isSelected && stat.filterKey === 'military' && "ring-yellow-400 bg-yellow-500/20",
+                isSelected && stat.filterKey === 'safety' && "ring-orange-400 bg-orange-500/20",
+                !isSelected && "hover:bg-white/5"
+              )}
+            >
+              {/* Icon */}
+              <span 
+                className={`material-symbols-outlined text-lg mb-1 ${stat.color} transition-transform duration-300 ${isSelected ? 'scale-110' : ''}`} 
+                style={{ textShadow: isSelected ? `0 0 20px currentColor, 0 0 30px currentColor` : `0 0 15px currentColor` }}
+              >
+                {stat.icon}
+              </span>
+              {/* Value */}
+              <span 
+                className={`text-xl font-mono font-bold ${stat.color}`} 
+                style={{ textShadow: isSelected ? `0 0 20px currentColor, 0 0 30px currentColor` : `0 0 15px currentColor` }}
+              >
+                {loading ? '—' : (stat.value == null ? '—' : stat.value.toLocaleString())}
+              </span>
+              {/* Label */}
+              <span className={clsx(
+                "text-[10px] uppercase transition-colors duration-300",
+                isSelected ? "text-white font-semibold" : "text-gray-500"
+              )}>{stat.label}</span>
+            </div>
+          );
+        })}
       </div>
     </div>
   );

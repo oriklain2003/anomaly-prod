@@ -118,62 +118,154 @@ function truncate(str: string, maxLength: number): string {
 }
 
 /**
- * Get the anomaly reason from a report following priority:
- * 1. Tagged rule_id (human-verified, from user_feedback table) - HIGHEST PRIORITY
- * 2. Tagged rule_name (from user_feedback)
- * 3. Matched rules from full_report (automated detection)
- * 4. Matched rule IDs from anomaly_reports
- * 5. Truncated comments
- * 6. "N/A" if nothing available
- * 
- * Human-tagged values take precedence over automated detection.
+ * Helper to parse a rule ID from various formats (number, string, null)
+ * Returns the numeric ID or null if invalid
  */
-export function getAnomalyReason(report: AnomalyReport): string {
-  // 1. Check for tagged rule_id (direct from user_feedback table) - HIGHEST PRIORITY
-  // Human-tagged values should override automated detection
-  if (report.rule_id && TAGGING_RULES[report.rule_id]) {
-    return TAGGING_RULES[report.rule_id];
+function parseRuleId(id: unknown): number | null {
+  if (id === null || id === undefined) return null;
+  if (typeof id === 'number') {
+    return Number.isFinite(id) && id > 0 ? id : null;
+  }
+  if (typeof id === 'string') {
+    const parsed = parseInt(id.trim(), 10);
+    return !isNaN(parsed) && parsed > 0 ? parsed : null;
+  }
+  return null;
+}
+
+/**
+ * Helper to add a reason to the Set, avoiding duplicates
+ */
+function addReasonFromId(id: unknown, reasonsSet: Set<string>): boolean {
+  const parsedId = parseRuleId(id);
+  if (parsedId !== null && TAGGING_RULES[parsedId]) {
+    reasonsSet.add(TAGGING_RULES[parsedId]);
+    return true;
+  }
+  return false;
+}
+
+/**
+ * Get ALL anomaly reasons from a report as an array.
+ * Priority order (combines all available sources, deduplicates):
+ * 1. rule_ids array (primary - human tagged, multiple rules)
+ * 2. rule_id (secondary - human tagged, single rule, added if not already present)
+ * 3. rule_name (human tagged name)
+ * 4. matched_rules from full_report (automated detection)
+ * 5. matched_rule_ids (denormalized from anomaly_reports)
+ * 6. feedback_rule_names (legacy feedback)
+ */
+export function getAnomalyReasons(report: AnomalyReport): string[] {
+  const reasonsSet = new Set<string>();
+  
+  // 1. FIRST: Check rule_ids array (multiple rules tagged - highest priority)
+  if (report.rule_ids && Array.isArray(report.rule_ids)) {
+    for (const id of report.rule_ids) {
+      addReasonFromId(id, reasonsSet);
+    }
+  }
+  
+  // 2. THEN: Also check rule_id (single rule - add if not already present from rule_ids)
+  // This ensures we don't miss a rule_id even if rule_ids exists but doesn't include it
+  if (report.rule_id !== undefined && report.rule_id !== null) {
+    addReasonFromId(report.rule_id, reasonsSet);
+  }
+  
+  // If we have any tagged rules from rule_ids or rule_id, return them
+  if (reasonsSet.size > 0) {
+    return Array.from(reasonsSet);
   }
 
-  // 2. Check for tagged rule_name (from user_feedback)
-  if (report.rule_name) {
-    return normalizeRuleName(report.rule_name);
+  // 3. Check for tagged rule_name (from user_feedback - string name)
+  if (report.rule_name && typeof report.rule_name === 'string' && report.rule_name.trim()) {
+    const normalized = normalizeRuleName(report.rule_name);
+    if (normalized) {
+      return [normalized];
+    }
   }
 
-  // 3. Check for matched rules in full_report (automated detection)
+  // 4. Check for matched rules in full_report (automated detection)
   const matchedRules = report.full_report?.layer_1_rules?.report?.matched_rules;
-  if (matchedRules && matchedRules.length > 0) {
-    const rule = matchedRules[0];
-    // Use rule.id -> TAGGING_RULES lookup
-    if (rule.id && TAGGING_RULES[rule.id]) {
-      return TAGGING_RULES[rule.id];
-    }
-    // Fallback to rule.name if id lookup fails
-    if (rule.name) {
-      return normalizeRuleName(rule.name);
-    }
-  }
-
-  // 4. Check for matched_rule_ids (denormalized in anomaly_reports)
-  if (report.matched_rule_ids) {
-    const ids = typeof report.matched_rule_ids === 'string' 
-      ? report.matched_rule_ids.split(',').map(id => parseInt(id.trim(), 10))
-      : report.matched_rule_ids;
-    
-    if (Array.isArray(ids) && ids.length > 0) {
-      const firstId = ids[0];
-      if (!isNaN(firstId) && TAGGING_RULES[firstId]) {
-        return TAGGING_RULES[firstId];
+  if (matchedRules && Array.isArray(matchedRules) && matchedRules.length > 0) {
+    for (const rule of matchedRules) {
+      if (rule && typeof rule === 'object') {
+        // Try ID first, then name
+        if (!addReasonFromId(rule.id, reasonsSet) && rule.name) {
+          const normalized = normalizeRuleName(rule.name);
+          if (normalized) {
+            reasonsSet.add(normalized);
+          }
+        }
       }
     }
+    if (reasonsSet.size > 0) return Array.from(reasonsSet);
   }
 
-  // 5. Check for feedback_rule_names
-  if (report.feedback_rule_names && report.feedback_rule_names.length > 0) {
-    return normalizeRuleName(report.feedback_rule_names[0]);
+  // 5. Check for matched_rule_ids (denormalized in anomaly_reports)
+  if (report.matched_rule_ids) {
+    let ids: (string | number)[] = [];
+    
+    if (typeof report.matched_rule_ids === 'string') {
+      // Handle comma-separated string: "3,4,5"
+      ids = report.matched_rule_ids.split(',').map(s => s.trim()).filter(s => s);
+    } else if (Array.isArray(report.matched_rule_ids)) {
+      ids = report.matched_rule_ids;
+    }
+    
+    for (const id of ids) {
+      addReasonFromId(id, reasonsSet);
+    }
+    if (reasonsSet.size > 0) return Array.from(reasonsSet);
   }
 
-  // 6. Check for comments (only if they describe a rule/reason)
+  // 6. Check for feedback_rule_names (legacy)
+  if (report.feedback_rule_names && Array.isArray(report.feedback_rule_names)) {
+    for (const name of report.feedback_rule_names) {
+      if (name && typeof name === 'string' && name.trim()) {
+        const normalized = normalizeRuleName(name);
+        if (normalized) {
+          reasonsSet.add(normalized);
+        }
+      }
+    }
+    if (reasonsSet.size > 0) return Array.from(reasonsSet);
+  }
+
+  return [];
+}
+
+/**
+ * Get the anomaly reason from a report following priority:
+ * 1. Tagged rule_ids (human-verified, multiple rules)
+ * 2. Tagged rule_id (human-verified, single rule)
+ * 3. Tagged rule_name (from user_feedback)
+ * 4. Matched rules from full_report (automated detection)
+ * 5. Matched rule IDs from anomaly_reports
+ * 6. Truncated comments
+ * 7. "N/A" if nothing available
+ * 
+ * Human-tagged values take precedence over automated detection.
+ * Returns concatenated string for multiple rules (e.g. "Proximity + Holding")
+ */
+export function getAnomalyReason(report: AnomalyReport): string {
+  const reasons = getAnomalyReasons(report);
+  
+  if (reasons.length > 0) {
+    // Show up to 2 reasons, abbreviated for space
+    if (reasons.length === 1) {
+      return reasons[0];
+    } else if (reasons.length === 2) {
+      // Abbreviate long names for the combined display
+      const abbrev = (s: string) => s.length > 12 ? s.slice(0, 10) + '..' : s;
+      return `${abbrev(reasons[0])} + ${abbrev(reasons[1])}`;
+    } else {
+      // More than 2 rules
+      const abbrev = (s: string) => s.length > 10 ? s.slice(0, 8) + '..' : s;
+      return `${abbrev(reasons[0])} +${reasons.length - 1}`;
+    }
+  }
+
+  // Fallback: Check for comments (only if they describe a rule/reason)
   if (report.feedback_comments && report.feedback_comments.trim()) {
     const comment = report.feedback_comments.trim();
     // Don't show model-related comments, only rule-based ones
@@ -185,7 +277,7 @@ export function getAnomalyReason(report: AnomalyReport): string {
     }
   }
 
-  // 7. Check comments field directly (from API)
+  // Check comments field directly (from API)
   if (report.comments && report.comments.trim()) {
     const comment = report.comments.trim();
     if (!comment.toLowerCase().includes('model') && 

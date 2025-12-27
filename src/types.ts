@@ -6,6 +6,7 @@ export interface TrackPoint {
   alt: number;
   timestamp: number;
   gspeed?: number;
+  vspeed?: number;  // Vertical speed in ft/min (positive = climbing, negative = descending)
   track?: number;
   flight_id?: string;
   callsign?: string;
@@ -90,7 +91,9 @@ export interface AnomalyReport {
   };
   // Tagged rule fields (from user_feedback table)
   rule_id?: number;
+  rule_ids?: number[];  // Multiple rules (new format)
   rule_name?: string;
+  rule_names?: string[];  // Multiple rule names
   comments?: string;
   other_details?: string;
   // Matched rules from anomaly_reports (denormalized)
@@ -202,7 +205,22 @@ export interface AlertData {
   actionLabel?: string;
 }
 
+// AI Map Actions - returned by AI to highlight segments/points on the map
+export type AIMapAction = 
+  | { action: 'highlight_point'; lat: number; lon: number }
+  | { action: 'highlight_segment'; startIndex: number; endIndex: number }
+  | { action: 'focus_time'; timestamp: number };
+
+export interface HighlightState {
+  segment?: { startIndex: number; endIndex: number };
+  point?: { lat: number; lon: number };
+  focusTimestamp?: number;
+}
+
 // Statistics types
+
+// Filter type for overview stats highlighting
+export type StatFilter = 'flights' | 'anomalies' | 'emergency' | 'traffic' | 'military' | 'safety' | null;
 
 export interface OverviewStats {
   total_flights: number;
@@ -282,6 +300,7 @@ export interface FlightMetadata {
   signal_loss_events?: number;
   is_anomaly?: boolean;
   is_military?: boolean;
+  category?: string; // Aircraft category (Passenger, Cargo, Business_jets, Military_and_government, General_aviation, Other_service, Helicopters)
 }
 
 // ============================================================
@@ -417,4 +436,54 @@ export interface RouteCheckResponse {
     message: string;
   };
   alternative_slots?: TimeSlotAnalysis[];
+}
+
+// ============================================================
+// Weather Types
+// ============================================================
+
+export interface WeatherData {
+  // Temperature
+  temperature_c: number | null;
+  temperature_f: number | null;
+  feels_like_c: number | null;
+  
+  // Humidity
+  humidity_pct: number | null;
+  
+  // Wind (aviation units)
+  wind_speed_kts: number | null;
+  wind_speed_mps: number | null;
+  wind_direction_deg: number | null;
+  wind_gust_kts: number | null;
+  
+  // Visibility (aviation units)
+  visibility_nm: number | null;
+  visibility_m: number | null;
+  
+  // Cloud cover
+  cloud_cover_pct: number | null;
+  
+  // Conditions
+  conditions: string;
+  conditions_type: string | null;
+  icon_url: string | null;
+  
+  // Pressure
+  pressure_hpa: number | null;
+  
+  // Thunderstorm (important for aviation)
+  thunderstorm_probability: number | null;
+  
+  // Additional
+  uv_index: number | null;
+  dew_point_c: number | null;
+  
+  // Location
+  lat: number;
+  lon: number;
+  fetched_at: string;
+  
+  // Error (if fetch failed)
+  error?: string;
 }

@@ -11,16 +11,18 @@ try {
 } catch {
   // Plugin already loaded
 }
-import type { SelectedFlight, FlightTrack, LearnedLayers, TrackPoint } from '../types';
-import { fetchUnifiedTrack, fetchSystemReportTrack, fetchLearnedLayers, fetchReplayOtherFlight, fetchAllLiveFlights, fetchLiveResearchTrack, type LiveFlightData } from '../api';
+import type { SelectedFlight, FlightTrack, LearnedLayers, TrackPoint, HighlightState, WeatherData } from '../types';
+import { fetchUnifiedTrack, fetchSystemReportTrack, fetchLearnedLayers, fetchReplayOtherFlight, fetchAllLiveFlights, fetchLiveResearchTrack, fetchCurrentWeather, type LiveFlightData } from '../api';
 import type { MapLayer } from './MapControls';
+import { Cloud, Wind, Eye, Thermometer, Droplets } from 'lucide-react';
 
 interface MapComponentProps {
   onMouseMove?: (coords: { lat: number; lon: number; elv: number }) => void;
   selectedFlight: SelectedFlight | null;
   activeLayers: MapLayer[];
-  mode?: 'live' | 'history';
+  mode?: 'live' | 'history' | 'ai';
   onFlightClick?: (flightId: string, isAnomaly: boolean, callsign?: string, origin?: string, destination?: string) => void;
+  highlight?: HighlightState | null;
 }
 
 interface ProximityFlightData {
@@ -146,7 +148,7 @@ function createPlaneIcon(fillColor: string, strokeColor: string, size = 8): Imag
   return ctx.getImageData(0, 0, size, size);
 }
 
-export function MapComponent({ onMouseMove: _onMouseMove, selectedFlight, activeLayers, mode = 'history', onFlightClick }: MapComponentProps) {
+export function MapComponent({ onMouseMove: _onMouseMove, selectedFlight, activeLayers, mode = 'history', onFlightClick, highlight }: MapComponentProps) {
   const mapContainer = useRef<HTMLDivElement>(null);
   const map = useRef<maplibregl.Map | null>(null);
   const startMarkerRef = useRef<maplibregl.Marker | null>(null);
@@ -157,7 +159,16 @@ export function MapComponent({ onMouseMove: _onMouseMove, selectedFlight, active
   const [learnedLayers, setLearnedLayers] = useState<LearnedLayers | null>(null);
   const [liveFlights, setLiveFlights] = useState<LiveFlightData[]>([]);
   const [isMapReady, setIsMapReady] = useState(false);
+  const [weather, setWeather] = useState<WeatherData | null>(null);
+  const [weatherLoading, setWeatherLoading] = useState(false);
+  const [showWeather, setShowWeather] = useState(true);
   const apiKey = 'r7kaQpfNDVZdaVp23F1r';
+  
+  // Default center for weather (center of Levant region)
+  const WEATHER_CENTER = {
+    lat: (TRAINING_BBOX.north + TRAINING_BBOX.south) / 2,
+    lon: (TRAINING_BBOX.west + TRAINING_BBOX.east) / 2,
+  };
 
   // Create custom marker element for takeoff/origin (green)
   const createStartMarkerElement = () => {
@@ -236,6 +247,29 @@ export function MapComponent({ onMouseMove: _onMouseMove, selectedFlight, active
       })
       .catch(err => console.warn('[MapComponent] Could not load learned layers:', err));
   }, []);
+
+  // Fetch weather data on mount and refresh every 15 minutes
+  useEffect(() => {
+    const fetchWeatherData = async () => {
+      setWeatherLoading(true);
+      try {
+        const data = await fetchCurrentWeather(WEATHER_CENTER.lat, WEATHER_CENTER.lon);
+        setWeather(data);
+        console.log('[MapComponent] Weather loaded:', data.conditions);
+      } catch (err) {
+        console.warn('[MapComponent] Could not load weather:', err);
+      } finally {
+        setWeatherLoading(false);
+      }
+    };
+
+    fetchWeatherData();
+    
+    // Refresh weather every 15 minutes
+    const intervalId = setInterval(fetchWeatherData, 15 * 60 * 1000);
+    
+    return () => clearInterval(intervalId);
+  }, [WEATHER_CENTER.lat, WEATHER_CENTER.lon]);
 
   // Fetch flight track when selected flight changes
   useEffect(() => {
@@ -430,6 +464,18 @@ export function MapComponent({ onMouseMove: _onMouseMove, selectedFlight, active
         data: { type: 'FeatureCollection', features: [] },
       });
 
+      // AI Highlighted segment source (yellow/orange for AI-pointed segments)
+      map.current.addSource('highlight-segment', {
+        type: 'geojson',
+        data: { type: 'FeatureCollection', features: [] },
+      });
+
+      // AI Highlighted point source (for point highlights)
+      map.current.addSource('highlight-point', {
+        type: 'geojson',
+        data: { type: 'FeatureCollection', features: [] },
+      });
+
       // Proximity flight tracks source
       map.current.addSource('proximity-tracks', {
         type: 'geojson',
@@ -519,6 +565,40 @@ export function MapComponent({ onMouseMove: _onMouseMove, selectedFlight, active
         type: 'circle',
         source: 'anomaly-points',
         paint: { 'circle-radius': 4, 'circle-color': '#ef4444', 'circle-opacity': 0.9, 'circle-stroke-width': 1, 'circle-stroke-color': '#ffffff' },
+      });
+
+      // AI Highlighted segment - thick yellow/orange line (glow effect)
+      map.current.addLayer({
+        id: 'highlight-segment-glow',
+        type: 'line',
+        source: 'highlight-segment',
+        layout: { 'line-join': 'round', 'line-cap': 'round' },
+        paint: { 'line-color': '#fbbf24', 'line-width': 12, 'line-opacity': 0.4, 'line-blur': 3 },
+      });
+
+      // AI Highlighted segment - main line
+      map.current.addLayer({
+        id: 'highlight-segment-line',
+        type: 'line',
+        source: 'highlight-segment',
+        layout: { 'line-join': 'round', 'line-cap': 'round' },
+        paint: { 'line-color': '#fbbf24', 'line-width': 5, 'line-opacity': 1 },
+      });
+
+      // AI Highlighted point - outer glow
+      map.current.addLayer({
+        id: 'highlight-point-glow',
+        type: 'circle',
+        source: 'highlight-point',
+        paint: { 'circle-radius': 20, 'circle-color': '#ff9500', 'circle-opacity': 0.3, 'circle-blur': 1 },
+      });
+
+      // AI Highlighted point - main circle
+      map.current.addLayer({
+        id: 'highlight-point-circle',
+        type: 'circle',
+        source: 'highlight-point',
+        paint: { 'circle-radius': 10, 'circle-color': '#ff9500', 'circle-opacity': 0.9, 'circle-stroke-width': 3, 'circle-stroke-color': '#ffffff' },
       });
 
       // Proximity flight tracks - dashed red lines
@@ -839,6 +919,99 @@ export function MapComponent({ onMouseMove: _onMouseMove, selectedFlight, active
     }
   }, [flightTrack, selectedFlight?.report, selectedFlight?.callsign, selectedFlight?.flight_id, proximityFlights, isMapReady, mode]);
 
+  // Update AI highlight display (segment or point)
+  useEffect(() => {
+    if (!map.current || !isMapReady) return;
+
+    const highlightSegmentSource = map.current.getSource('highlight-segment') as maplibregl.GeoJSONSource;
+    const highlightPointSource = map.current.getSource('highlight-point') as maplibregl.GeoJSONSource;
+
+    if (!highlightSegmentSource || !highlightPointSource) return;
+
+    // Clear previous highlights
+    highlightSegmentSource.setData({ type: 'FeatureCollection', features: [] });
+    highlightPointSource.setData({ type: 'FeatureCollection', features: [] });
+
+    if (!highlight || !flightTrack?.points || flightTrack.points.length === 0) return;
+
+    // Handle segment highlight
+    if (highlight.segment) {
+      const { startIndex, endIndex } = highlight.segment;
+      const start = Math.max(0, Math.min(startIndex, flightTrack.points.length - 1));
+      const end = Math.max(0, Math.min(endIndex, flightTrack.points.length - 1));
+      
+      // Get coordinates for the segment
+      const segmentCoords = flightTrack.points.slice(start, end + 1).map(p => [p.lon, p.lat]);
+      
+      if (segmentCoords.length >= 2) {
+        highlightSegmentSource.setData({
+          type: 'Feature',
+          properties: {},
+          geometry: {
+            type: 'LineString',
+            coordinates: segmentCoords,
+          },
+        });
+        
+        // Pan to show the highlighted segment
+        const bounds = new maplibregl.LngLatBounds();
+        segmentCoords.forEach(coord => bounds.extend(coord as [number, number]));
+        map.current.fitBounds(bounds, { padding: 100, maxZoom: 12, duration: 500 });
+      }
+    }
+
+    // Handle point highlight
+    if (highlight.point) {
+      highlightPointSource.setData({
+        type: 'Feature',
+        properties: {},
+        geometry: {
+          type: 'Point',
+          coordinates: [highlight.point.lon, highlight.point.lat],
+        },
+      });
+      
+      // Pan to the highlighted point
+      map.current.flyTo({
+        center: [highlight.point.lon, highlight.point.lat],
+        zoom: 11,
+        duration: 500,
+      });
+    }
+
+    // Handle focus timestamp - find closest point and highlight it
+    if (highlight.focusTimestamp && !highlight.point && !highlight.segment) {
+      let closestIdx = 0;
+      let minDiff = Infinity;
+      
+      for (let i = 0; i < flightTrack.points.length; i++) {
+        const diff = Math.abs(flightTrack.points[i].timestamp - highlight.focusTimestamp);
+        if (diff < minDiff) {
+          minDiff = diff;
+          closestIdx = i;
+        }
+      }
+      
+      const closestPoint = flightTrack.points[closestIdx];
+      if (closestPoint) {
+        highlightPointSource.setData({
+          type: 'Feature',
+          properties: {},
+          geometry: {
+            type: 'Point',
+            coordinates: [closestPoint.lon, closestPoint.lat],
+          },
+        });
+        
+        map.current.flyTo({
+          center: [closestPoint.lon, closestPoint.lat],
+          zoom: 11,
+          duration: 500,
+        });
+      }
+    }
+  }, [highlight, flightTrack, isMapReady]);
+
   // Update live flights display using HTML markers
   useEffect(() => {
     if (!map.current || !isMapReady) return;
@@ -916,7 +1089,130 @@ export function MapComponent({ onMouseMove: _onMouseMove, selectedFlight, active
     });
   }, [liveFlights, selectedFlight?.flight_id, flightTrack, mode, isMapReady, onFlightClick, safeSetLayoutProperty]);
 
+  // Get wind direction as compass
+  const getWindDirection = (deg: number | null): string => {
+    if (deg === null) return '--';
+    const directions = ['N', 'NNE', 'NE', 'ENE', 'E', 'ESE', 'SE', 'SSE', 'S', 'SSW', 'SW', 'WSW', 'W', 'WNW', 'NW', 'NNW'];
+    const index = Math.round(deg / 22.5) % 16;
+    return directions[index];
+  };
+
   return (
-    <div ref={mapContainer} className="w-full h-full" />
+    <div className="relative w-full h-full">
+      <div ref={mapContainer} className="w-full h-full" />
+      
+      {/* Weather Overlay Panel */}
+      {showWeather && weather && !weather.error && (
+        <div className="absolute top-4 right-4 z-10">
+          <div className="bg-black/80 backdrop-blur-md border border-cyan-500/30 rounded-lg p-3 shadow-[0_0_20px_rgba(6,182,212,0.2)] min-w-[180px]">
+            {/* Header */}
+            <div className="flex items-center justify-between mb-2 pb-2 border-b border-white/10">
+              <div className="flex items-center gap-2">
+                <Cloud className="w-4 h-4 text-cyan-400" />
+                <span className="text-xs font-bold text-white uppercase tracking-wider">Weather</span>
+              </div>
+              <button 
+                onClick={() => setShowWeather(false)}
+                className="text-gray-500 hover:text-white text-xs"
+              >
+                ✕
+              </button>
+            </div>
+            
+            {/* Conditions */}
+            <div className="mb-3">
+              <div className="text-sm font-medium text-white">{weather.conditions || 'Unknown'}</div>
+              <div className="text-[10px] text-gray-500 mt-0.5">Levant Region</div>
+            </div>
+            
+            {/* Weather Grid */}
+            <div className="grid grid-cols-2 gap-2 text-xs">
+              {/* Temperature */}
+              <div className="flex items-center gap-1.5 bg-white/5 rounded px-2 py-1.5">
+                <Thermometer className="w-3.5 h-3.5 text-orange-400" />
+                <div>
+                  <div className="text-white font-mono">
+                    {weather.temperature_c !== null ? `${weather.temperature_c}°C` : '--'}
+                  </div>
+                  <div className="text-[9px] text-gray-500">Temp</div>
+                </div>
+              </div>
+              
+              {/* Wind */}
+              <div className="flex items-center gap-1.5 bg-white/5 rounded px-2 py-1.5">
+                <Wind className="w-3.5 h-3.5 text-cyan-400" />
+                <div>
+                  <div className="text-white font-mono">
+                    {weather.wind_speed_kts !== null ? `${weather.wind_speed_kts}kts` : '--'}
+                  </div>
+                  <div className="text-[9px] text-gray-500">
+                    {weather.wind_direction_deg !== null ? `${getWindDirection(weather.wind_direction_deg)} ${weather.wind_direction_deg}°` : 'Wind'}
+                  </div>
+                </div>
+              </div>
+              
+              {/* Visibility */}
+              <div className="flex items-center gap-1.5 bg-white/5 rounded px-2 py-1.5">
+                <Eye className="w-3.5 h-3.5 text-green-400" />
+                <div>
+                  <div className="text-white font-mono">
+                    {weather.visibility_nm !== null ? `${weather.visibility_nm}nm` : '--'}
+                  </div>
+                  <div className="text-[9px] text-gray-500">Visibility</div>
+                </div>
+              </div>
+              
+              {/* Cloud Cover */}
+              <div className="flex items-center gap-1.5 bg-white/5 rounded px-2 py-1.5">
+                <Droplets className="w-3.5 h-3.5 text-blue-400" />
+                <div>
+                  <div className="text-white font-mono">
+                    {weather.cloud_cover_pct !== null ? `${weather.cloud_cover_pct}%` : '--'}
+                  </div>
+                  <div className="text-[9px] text-gray-500">Clouds</div>
+                </div>
+              </div>
+            </div>
+            
+            {/* Thunderstorm Warning */}
+            {weather.thunderstorm_probability !== null && weather.thunderstorm_probability > 20 && (
+              <div className="mt-2 px-2 py-1.5 bg-yellow-500/20 border border-yellow-500/30 rounded text-xs text-yellow-400 flex items-center gap-1.5">
+                <span>⚡</span>
+                <span>Storm {weather.thunderstorm_probability}%</span>
+              </div>
+            )}
+            
+            {/* Pressure */}
+            {weather.pressure_hpa !== null && (
+              <div className="mt-2 pt-2 border-t border-white/10 flex justify-between text-[10px] text-gray-500">
+                <span>QNH</span>
+                <span className="font-mono text-gray-400">{weather.pressure_hpa} hPa</span>
+              </div>
+            )}
+          </div>
+        </div>
+      )}
+      
+      {/* Weather Toggle Button (when panel is hidden) */}
+      {!showWeather && (
+        <button
+          onClick={() => setShowWeather(true)}
+          className="absolute top-4 right-4 z-10 bg-black/80 backdrop-blur-md border border-cyan-500/30 rounded-lg p-2 shadow-[0_0_15px_rgba(6,182,212,0.2)] hover:bg-black/90 transition-colors"
+          title="Show Weather"
+        >
+          <Cloud className="w-5 h-5 text-cyan-400" />
+        </button>
+      )}
+      
+      {/* Weather Loading Indicator */}
+      {weatherLoading && (
+        <div className="absolute top-4 right-4 z-10 bg-black/80 backdrop-blur-md border border-cyan-500/30 rounded-lg p-3">
+          <div className="flex items-center gap-2 text-xs text-gray-400">
+            <div className="w-3 h-3 border-2 border-cyan-400 border-t-transparent rounded-full animate-spin"></div>
+            <span>Loading weather...</span>
+          </div>
+        </div>
+      )}
+    </div>
   );
 }

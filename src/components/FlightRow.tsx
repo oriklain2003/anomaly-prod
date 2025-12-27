@@ -1,8 +1,8 @@
 import { useState, useMemo, useEffect } from 'react';
 import clsx from 'clsx';
 import { ChevronDown, ExternalLink, Plane } from 'lucide-react';
-import type { AnomalyReport, FlightPhase } from '../types';
-import { getAnomalyReason, getScoreColor, formatTime } from '../utils/reason';
+import type { AnomalyReport, FlightPhase, StatFilter } from '../types';
+import { getAnomalyReason, getAnomalyReasons, getScoreColor, formatTime } from '../utils/reason';
 
 interface FlightRowProps {
   report: AnomalyReport;
@@ -13,6 +13,64 @@ interface FlightRowProps {
   altitude?: number;
   speed?: number;
   heading?: number;
+  highlightFilter?: StatFilter;
+}
+
+// Traffic-related displayed reasons
+const TRAFFIC_REASONS = ['Holding Pattern', 'Go Around', 'Return to Land', 'Unplanned Landing'];
+// Emergency-related displayed reasons
+const EMERGENCY_REASONS = ['Emergency Squawks', 'Crash'];
+// Safety-related displayed reasons
+const SAFETY_REASONS = ['Proximity Alert'];
+// Military-related displayed reasons
+const MILITARY_REASONS = ['Military Flight', 'Operational Military'];
+
+// Medium priority callsign prefixes (noisy flights that should show yellow instead of red)
+const MEDIUM_PRIORITY_PREFIXES = ['4X', 'SHAHD', 'APX', 'RAAD', 'JYRJ', '0000000', 'HERC'];
+
+// Helper to check if a callsign indicates a medium priority anomaly
+function isMediumPriorityCallsign(callsign: string | undefined | null): boolean {
+  if (!callsign) return false;
+  const upperCallsign = callsign.toUpperCase();
+  return MEDIUM_PRIORITY_PREFIXES.some(prefix => upperCallsign.startsWith(prefix));
+}
+
+// Helper to check if a flight matches the highlight filter
+// Uses the DISPLAYED reason (same as what user sees in UI) for accurate matching
+function matchesFilter(report: AnomalyReport, filter: StatFilter): boolean {
+  if (!filter) return false;
+  
+  // Get the displayed reasons using the same function that determines UI display
+  const displayedReasons = getAnomalyReasons(report);
+  
+  switch (filter) {
+    case 'flights':
+      return true; // All flights match
+    case 'anomalies':
+      return report.is_anomaly === true;
+    case 'emergency':
+      return displayedReasons.some(reason => 
+        EMERGENCY_REASONS.some(er => reason.includes(er))
+      );
+    case 'traffic':
+      return displayedReasons.some(reason => 
+        TRAFFIC_REASONS.some(tr => reason.includes(tr))
+      );
+    case 'military':
+      return displayedReasons.some(reason => 
+        MILITARY_REASONS.some(mr => reason.includes(mr))
+      ) || 
+        // Also check callsign for military aircraft
+        (report.callsign?.toUpperCase().startsWith('RCH') ?? false) ||
+        (report.callsign?.toUpperCase().startsWith('CNV') ?? false) ||
+        (report.callsign?.toUpperCase().startsWith('IAF') ?? false);
+    case 'safety':
+      return displayedReasons.some(reason => 
+        SAFETY_REASONS.some(sr => reason.includes(sr))
+      );
+    default:
+      return false;
+  }
 }
 
 export function FlightRow({
@@ -24,8 +82,12 @@ export function FlightRow({
   altitude,
   speed,
   heading,
+  highlightFilter,
 }: FlightRowProps) {
   const [isExpanded, setIsExpanded] = useState(false);
+  
+  // Check if this flight should be highlighted based on the filter
+  const isHighlighted = matchesFilter(report, highlightFilter ?? null);
 
   // Collapse when another flight is selected (this one becomes deselected)
   useEffect(() => {
@@ -43,6 +105,9 @@ export function FlightRow({
   const baseScore = score; // Use generated score for color calculation
   const reason = getAnomalyReason(report);
   const scoreColor = getScoreColor(baseScore);
+  
+  // Check if this is a medium priority flight (noisy callsigns)
+  const isMediumPriority = isMediumPriorityCallsign(report.callsign);
 
   // Get origin/destination from report metadata if available
   const origin = report.origin_airport || report.full_report?.summary?.origin || '---';
@@ -84,13 +149,21 @@ export function FlightRow({
     }
   };
 
+  // Get the highlight class based on filter type
+  // Uses CSS classes defined in index.css for proper styling with overflow containers
+  const getHighlightClass = () => {
+    if (!isHighlighted || !highlightFilter) return '';
+    return `highlight-${highlightFilter}`;
+  };
+
   return (
     <div
       className={clsx(
-        "mx-3 my-2 rounded-xl transition-all duration-300 relative overflow-hidden",
+        "mx-3 my-2 rounded-xl transition-all duration-300 relative",
         isSelected 
           ? "flight-card-active" 
-          : "flight-card"
+          : "flight-card",
+        isHighlighted && !isSelected && getHighlightClass()
       )}
     >
       {/* Collapsed Row - Grid Layout matching reference */}
@@ -108,18 +181,24 @@ export function FlightRow({
             {/* Glow effect behind the plane */}
             <div className={clsx(
               "absolute inset-0 rounded-full blur-md opacity-60",
-              baseScore >= 50 ? "bg-red-500" : "bg-cyan-500",
+              baseScore >= 50 
+                ? (isMediumPriority ? "bg-yellow-500" : "bg-red-500") 
+                : "bg-cyan-500",
               isSelected && "animate-pulse opacity-80"
             )} style={{ transform: 'scale(1.8)', left: '-4px', top: '-2px' }} />
             {/* Plane icon */}
             <Plane 
               className={clsx(
                 "w-4 h-4 relative z-10 transform -rotate-45",
-                baseScore >= 50 ? "text-red-400" : "text-cyan-400"
+                baseScore >= 50 
+                  ? (isMediumPriority ? "text-yellow-400" : "text-red-400") 
+                  : "text-cyan-400"
               )}
               style={{
                 filter: baseScore >= 50 
-                  ? 'drop-shadow(0 0 6px rgba(239, 68, 68, 0.8)) drop-shadow(0 0 12px rgba(239, 68, 68, 0.5))'
+                  ? (isMediumPriority 
+                      ? 'drop-shadow(0 0 6px rgba(250, 204, 21, 0.8)) drop-shadow(0 0 12px rgba(250, 204, 21, 0.5))'
+                      : 'drop-shadow(0 0 6px rgba(239, 68, 68, 0.8)) drop-shadow(0 0 12px rgba(239, 68, 68, 0.5))')
                   : 'drop-shadow(0 0 6px rgba(6, 182, 212, 0.8)) drop-shadow(0 0 12px rgba(6, 182, 212, 0.5))'
               }}
               fill="currentColor"
@@ -195,8 +274,13 @@ export function FlightRow({
               ID: <span className="text-gray-300">{report.flight_id.slice(0, 8)}</span>
             </p>
             {baseScore >= 90 && (
-              <span className="text-[9px] px-1.5 py-0.5 rounded bg-red-500/10 text-red-400 border border-red-500/20 uppercase tracking-wider font-bold">
-                High Alert
+              <span className={clsx(
+                "text-[9px] px-1.5 py-0.5 rounded uppercase tracking-wider font-bold",
+                isMediumPriority 
+                  ? "bg-yellow-500/10 text-yellow-400 border border-yellow-500/20"
+                  : "bg-red-500/10 text-red-400 border border-red-500/20"
+              )}>
+                {isMediumPriority ? 'Medium Alert' : 'High Alert'}
               </span>
             )}
           </div>
@@ -246,30 +330,46 @@ export function FlightRow({
             </div>
           )}
 
-          {/* Reason - simple inline format like reference */}
+          {/* Reason(s) - show all rules when expanded */}
           {mode === 'history' && reason !== 'N/A' && (
-            <div className="mt-2 pt-2 border-t border-white/5 flex gap-2 items-center">
-              <span className="material-symbols-outlined text-red-400 text-sm">warning</span>
-              <span className="text-xs text-gray-400">Reason:</span>
-              <span className="text-xs text-white font-medium">{reason}</span>
+            <div className="mt-2 pt-2 border-t border-white/5">
+              <div className="flex gap-2 items-center justify-between mb-1">
+                <div className="flex gap-2 items-center">
+                  <span className="material-symbols-outlined text-red-400 text-sm">warning</span>
+                  <span className="text-xs text-gray-400">Reason{getAnomalyReasons(report).length > 1 ? 's' : ''}:</span>
+                </div>
+                {/* Open in FR24 button */}
+                {fr24Url && (
+                  <a
+                    href={fr24Url}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    onClick={(e) => e.stopPropagation()}
+                    className="inline-flex items-center gap-1 px-2 py-1 text-[10px] font-semibold text-[#63d1eb] bg-[#63d1eb]/10 hover:bg-[#63d1eb]/20 border border-[#63d1eb]/30 hover:border-[#63d1eb]/50 rounded transition-all duration-300"
+                  >
+                    <ExternalLink className="w-3 h-3" />
+                    FR24
+                  </a>
+                )}
+              </div>
+              <div className="flex flex-wrap gap-1.5 ml-6">
+                {getAnomalyReasons(report).map((r, idx) => (
+                  <span 
+                    key={idx}
+                    className="text-[10px] px-2 py-0.5 rounded-full bg-red-500/10 text-red-300 border border-red-500/20"
+                  >
+                    {r}
+                  </span>
+                ))}
+                {getAnomalyReasons(report).length === 0 && (
+                  <span className="text-xs text-white font-medium">{reason}</span>
+                )}
+              </div>
             </div>
-          )}
-
-          {/* Open in FR24 button */}
-          {fr24Url && (
-            <a
-              href={fr24Url}
-              target="_blank"
-              rel="noopener noreferrer"
-              onClick={(e) => e.stopPropagation()}
-              className="mt-3 inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold text-[#63d1eb] bg-[#63d1eb]/10 hover:bg-[#63d1eb]/20 border border-[#63d1eb]/30 hover:border-[#63d1eb]/50 rounded-lg transition-all duration-300 shadow-[0_0_15px_rgba(99,209,235,0.1)] hover:shadow-[0_0_20px_rgba(99,209,235,0.25)]"
-            >
-              <ExternalLink className="w-3.5 h-3.5" />
-              Open in FR24
-            </a>
           )}
         </div>
       )}
+
     </div>
   );
 }

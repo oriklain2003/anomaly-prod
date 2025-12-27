@@ -1,11 +1,11 @@
 import { useState, useRef, useCallback, useEffect } from 'react';
 import { Header } from './Header';
-import { OperationsSidebar } from './OperationsSidebar';
+import { OperationsSidebar, type AIResultsData } from './OperationsSidebar';
 import { MapArea } from './MapArea';
 import { TacticalChat } from './TacticalChat';
 import { ReplayModal, type ReplayEvent } from './ReplayModal';
 import { ChevronLeft, ChevronRight } from 'lucide-react';
-import type { SelectedFlight } from '../types';
+import type { SelectedFlight, HighlightState } from '../types';
 import { fetchLiveResearchTrack, fetchLiveAnomalies } from '../api';
 
 // Alert sound hook for new anomaly detection
@@ -77,7 +77,7 @@ interface ReplayData {
 
 export function Layout() {
   const [selectedFlight, setSelectedFlight] = useState<SelectedFlight | null>(null);
-  const [mode, setMode] = useState<'live' | 'history'>('history');
+  const [mode, setMode] = useState<'live' | 'history' | 'ai'>('history');
   const [selectedDate, setSelectedDate] = useState<Date>(() => {
     const today = new Date();
     today.setHours(0, 0, 0, 0);
@@ -92,6 +92,13 @@ export function Layout() {
   const [showReplay, setShowReplay] = useState(false);
   const [replayData, setReplayData] = useState<ReplayData | null>(null);
   
+  // AI Results state
+  const [aiResults, setAiResults] = useState<AIResultsData | null>(null);
+  const [aiResultsLoading, setAiResultsLoading] = useState(false);
+  
+  // Highlight state from AI chat - shown on main map
+  const [highlightState, setHighlightState] = useState<HighlightState | null>(null);
+  
   const playAlert = useAlertSound();
   
   // Handler to open replay modal - passed to TacticalChat
@@ -104,6 +111,29 @@ export function Layout() {
   const handleCloseReplay = useCallback(() => {
     setShowReplay(false);
     setReplayData(null);
+  }, []);
+  
+  // Handler for AI results from TacticalChat
+  const handleAIResults = useCallback((data: AIResultsData) => {
+    console.log('[Layout] AI Results received:', data.flights.length, 'flights for query:', data.query);
+    setAiResults(data);
+    // Auto-switch to AI Results tab when new results arrive
+    setMode('ai');
+    // Play alert sound for new results
+    playAlert();
+  }, [playAlert]);
+  
+  // Handler to clear AI results
+  const handleClearAIResults = useCallback(() => {
+    setAiResults(null);
+    // Optionally switch back to history mode
+    setMode('history');
+  }, []);
+  
+  // Handler for AI highlight state - first shows on main map, then in 3D when opened
+  const handleHighlight = useCallback((highlight: HighlightState | null) => {
+    console.log('[Layout] AI highlight received:', highlight);
+    setHighlightState(highlight);
   }, []);
 
   const handleFlightSelect = (flight: SelectedFlight) => {
@@ -121,10 +151,12 @@ export function Layout() {
     });
   }, []);
 
-  const handleModeChange = (newMode: 'live' | 'history') => {
+  const handleModeChange = (newMode: 'live' | 'history' | 'ai') => {
     setMode(newMode);
-    // Clear selection when switching modes
-    setSelectedFlight(null);
+    // Clear selection when switching modes (except when switching to AI mode)
+    if (newMode !== 'ai') {
+      setSelectedFlight(null);
+    }
   };
 
   const handleDateChange = (date: Date) => {
@@ -222,6 +254,9 @@ export function Layout() {
                 selectedDate={selectedDate}
                 onDateChange={handleDateChange}
                 onNewAnomaly={handleNewAnomaly}
+                aiResults={aiResults}
+                onClearAIResults={handleClearAIResults}
+                aiResultsLoading={aiResultsLoading}
               />
             </div>
           </aside>
@@ -243,6 +278,8 @@ export function Layout() {
             selectedFlight={selectedFlight} 
             mode={mode} 
             onFlightClick={handleMapFlightClick}
+            highlight={highlightState}
+            onClearHighlight={() => setHighlightState(null)}
           />
         </main>
 
@@ -256,7 +293,13 @@ export function Layout() {
             {/* Top gradient line */}
             <div className="absolute top-0 left-0 right-0 h-[1px] bg-gradient-to-r from-transparent via-red-900/50 to-transparent" />
             <div className={`w-[420px] h-full overflow-hidden transition-opacity duration-200 ${rightSidebarCollapsed ? 'opacity-0 pointer-events-none' : 'opacity-100'}`}>
-              <TacticalChat selectedFlight={selectedFlight} onOpenReplay={handleOpenReplay} />
+              <TacticalChat 
+                selectedFlight={selectedFlight} 
+                onOpenReplay={handleOpenReplay} 
+                onAIResults={handleAIResults}
+                onHighlight={handleHighlight}
+                highlight={highlightState}
+              />
             </div>
           </aside>
           {/* Toggle button - outside overflow-hidden */}

@@ -621,3 +621,89 @@ export const createRouteLine = async (origin: string, destination: string): Prom
   
   return response.json();
 };
+
+// ============================================================
+// Flight Feedback
+// ============================================================
+
+export interface FeedbackPayload {
+  flight_id: string;
+  is_anomaly: boolean;
+  comments?: string;
+  rule_ids?: number[];
+  other_details?: string;
+}
+
+export const submitFlightFeedback = async (payload: FeedbackPayload): Promise<{ status: string; message: string }> => {
+  const response = await fetch(`${API_BASE}/feedback`, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify(payload),
+  });
+  
+  if (!response.ok) {
+    const errorData = await response.json().catch(() => ({}));
+    throw new Error(errorData.detail || 'Failed to submit feedback');
+  }
+  
+  return response.json();
+};
+
+// ============================================================
+// Weather API
+// ============================================================
+
+import type { WeatherData } from './types';
+
+/**
+ * Fetch current weather conditions at a specific location.
+ * Uses Google Weather API via backend.
+ * Results are cached on backend for 15 minutes.
+ */
+export const fetchCurrentWeather = async (lat: number, lon: number): Promise<WeatherData> => {
+  const response = await fetch(`${API_BASE}/weather/current?lat=${lat}&lon=${lon}`);
+  if (!response.ok) {
+    const errorData = await response.json().catch(() => ({}));
+    throw new Error(errorData.detail || 'Failed to fetch weather');
+  }
+  return response.json();
+};
+
+/**
+ * Fetch weather at grid points for map overlay.
+ */
+export interface WeatherGridResponse {
+  grid_points: WeatherData[];
+  bounds: {
+    lat_min: number;
+    lat_max: number;
+    lon_min: number;
+    lon_max: number;
+  };
+  grid_size: number;
+}
+
+export const fetchWeatherGrid = async (
+  lat_min: number,
+  lat_max: number,
+  lon_min: number,
+  lon_max: number,
+  grid_size: number = 3
+): Promise<WeatherGridResponse> => {
+  const params = new URLSearchParams({
+    lat_min: lat_min.toString(),
+    lat_max: lat_max.toString(),
+    lon_min: lon_min.toString(),
+    lon_max: lon_max.toString(),
+    grid_size: grid_size.toString(),
+  });
+  
+  const response = await fetch(`${API_BASE}/weather/grid?${params}`);
+  if (!response.ok) {
+    const errorData = await response.json().catch(() => ({}));
+    throw new Error(errorData.detail || 'Failed to fetch weather grid');
+  }
+  return response.json();
+};

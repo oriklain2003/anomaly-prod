@@ -1,11 +1,12 @@
 import { useEffect, useRef, useState } from 'react';
 import maplibregl from 'maplibre-gl';
 import 'maplibre-gl/dist/maplibre-gl.css';
-import { X, Play, Pause, SkipBack, SkipForward, AlertTriangle, MapPin, Wrench, Check } from 'lucide-react';
+import { X, Play, Pause, SkipBack, SkipForward, AlertTriangle, MapPin, Wrench, Check, Box, Map } from 'lucide-react';
 import { fetchFeedbackTrack, fetchReplayOtherFlight, fetchUnifiedTrack } from '../api';
 import type { TrackPoint } from '../types';
 import clsx from 'clsx';
 import { WORLD_AIRPORTS } from '../data/airports';
+import { Flight3DReplay } from './Flight3DReplay';
 
 export interface ReplayEvent {
   timestamp: number;
@@ -50,6 +51,7 @@ export function ReplayModal({ mainFlightId, secondaryFlightIds = [], events = []
   const [showTools, setShowTools] = useState(false);
   const [distanceTool, setDistanceTool] = useState(true);
   const [airportDistanceTool, setAirportDistanceTool] = useState(true);
+  const [show3DView, setShow3DView] = useState(false);
 
   const animationRef = useRef<number | undefined>(undefined);
   const lastFrameTime = useRef<number>(0);
@@ -553,12 +555,36 @@ export function ReplayModal({ mainFlightId, secondaryFlightIds = [], events = []
     );
   }
 
+  // If 3D view is active, render the 3D component instead
+  if (show3DView) {
+    return (
+      <Flight3DReplay
+        flightId={mainFlightId}
+        onClose={() => setShow3DView(false)}
+      />
+    );
+  }
+
   return (
     <div className="fixed inset-0 z-[9999] bg-black/95 flex items-center justify-center backdrop-blur-sm animate-in fade-in">
       <div className="bg-bg-panel w-[calc(100vw-64px)] h-[calc(100vh-64px)] rounded-xl overflow-hidden flex flex-col border border-white/10 shadow-2xl relative">
         
         {/* Header buttons - absolute positioned inside the modal with high z-index */}
         <div className="absolute top-5 right-5 z-[10000] flex gap-3">
+          {/* 3D View Toggle */}
+          <button 
+            onClick={() => setShow3DView(!show3DView)}
+            className={clsx(
+              "p-2.5 rounded-full transition-all border shadow-lg flex items-center gap-2",
+              show3DView 
+                ? "bg-cyan-500 text-white border-cyan-400 shadow-[0_0_15px_rgba(6,182,212,0.5)]" 
+                : "bg-black/80 hover:bg-black text-white border-white/20 hover:border-cyan-500/50"
+            )}
+            title={show3DView ? "Switch to 2D Map" : "Switch to 3D View"}
+          >
+            {show3DView ? <Map className="w-5 h-5" /> : <Box className="w-5 h-5" />}
+          </button>
+
           <div className="relative">
             <button 
               onClick={() => setShowTools(!showTools)}

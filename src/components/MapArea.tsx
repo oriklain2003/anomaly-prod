@@ -1,16 +1,18 @@
 import { useState } from 'react';
 import { MapComponent } from './MapComponent';
 import { MapControls, type MapLayer } from './MapControls';
-import { Plus, Minus } from 'lucide-react';
-import type { SelectedFlight } from '../types';
+import { Plus, Minus, X } from 'lucide-react';
+import type { SelectedFlight, HighlightState } from '../types';
 
 interface MapAreaProps {
   selectedFlight: SelectedFlight | null;
-  mode?: 'live' | 'history';
+  mode?: 'live' | 'history' | 'ai';
   onFlightClick?: (flightId: string, isAnomaly: boolean, callsign?: string, origin?: string, destination?: string) => void;
+  highlight?: HighlightState | null;
+  onClearHighlight?: () => void;
 }
 
-export function MapArea({ selectedFlight, mode = 'history', onFlightClick }: MapAreaProps) {
+export function MapArea({ selectedFlight, mode = 'history', onFlightClick, highlight, onClearHighlight }: MapAreaProps) {
   const [mouseCoords, setMouseCoords] = useState({ lat: 32.4412, lon: 35.8912, elv: 890 });
   const [activeLayers, setActiveLayers] = useState<MapLayer[]>(['track', 'anomalies']);
   const [showLayersDropdown, setShowLayersDropdown] = useState(false);
@@ -39,11 +41,30 @@ export function MapArea({ selectedFlight, mode = 'history', onFlightClick }: Map
           activeLayers={activeLayers}
           mode={mode}
           onFlightClick={onFlightClick}
+          highlight={highlight}
         />
         
         {/* Grid Overlay */}
         <div className="absolute inset-0 map-grid opacity-10 pointer-events-none" />
       </div>
+
+      {/* AI Highlight Indicator - Top Center */}
+      {(highlight?.segment || highlight?.point) && (
+        <div className="absolute top-4 left-1/2 -translate-x-1/2 z-30">
+          <div className="flex items-center gap-2 px-4 py-2 bg-orange-500/20 backdrop-blur-md border border-orange-500/50 rounded-full shadow-[0_0_20px_rgba(249,115,22,0.3)]">
+            <span className="text-orange-400 text-sm font-semibold">
+              🤖 AI Highlight Active
+            </span>
+            <button
+              onClick={onClearHighlight}
+              className="w-5 h-5 flex items-center justify-center rounded-full bg-orange-500/30 hover:bg-orange-500/50 transition text-orange-300 hover:text-white"
+              title="Dismiss highlight"
+            >
+              <X className="w-3.5 h-3.5" />
+            </button>
+          </div>
+        </div>
+      )}
 
       {/* Map Controls - Top Right */}
       <div className="absolute top-4 right-4 z-20 flex flex-col gap-2">

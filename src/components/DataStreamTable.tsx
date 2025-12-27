@@ -1,8 +1,64 @@
-import { useEffect, useState, useRef, useCallback } from 'react';
-import { AlertTriangle } from 'lucide-react';
-import type { AnomalyReport, FlightStatus, SelectedFlight } from '../types';
+import { useEffect, useState, useRef, useCallback, useMemo } from 'react';
+import { AlertTriangle, X, Sparkles } from 'lucide-react';
+import type { AnomalyReport, FlightStatus, SelectedFlight, StatFilter } from '../types';
 import { FlightRow } from './FlightRow';
 import { fetchLiveAnomalies, fetchSystemReports, fetchFlightStatus, fetchUnifiedTrack, fetchSystemReportTrack, fetchLiveAnomaliesSince, fetchLiveResearchTrack } from '../api';
+import { getAnomalyReasons } from '../utils/reason';
+
+// Stats calculated from displayed reasons (matches glow logic)
+export interface CalculatedStats {
+  anomalies: number;
+  emergency: number;
+  traffic: number;
+  military: number;
+  safety: number;
+}
+
+// Reason categories for stats calculation (must match FlightRow highlighting logic)
+const TRAFFIC_REASONS = ['Holding Pattern', 'Go Around', 'Return to Land', 'Unplanned Landing'];
+const EMERGENCY_REASONS = ['Emergency Squawks', 'Crash'];
+const SAFETY_REASONS = ['Proximity Alert'];
+const MILITARY_REASONS = ['Military Flight', 'Operational Military'];
+
+// Calculate stats from reports based on displayed reasons
+function calculateStats(reports: AnomalyReport[]): CalculatedStats {
+  const stats: CalculatedStats = {
+    anomalies: 0,
+    emergency: 0,
+    traffic: 0,
+    military: 0,
+    safety: 0,
+  };
+
+  for (const report of reports) {
+    // Count anomalies
+    if (report.is_anomaly) {
+      stats.anomalies++;
+    }
+
+    // Get displayed reasons (same logic as FlightRow highlighting)
+    const displayedReasons = getAnomalyReasons(report);
+
+    // Check each category
+    if (displayedReasons.some(reason => EMERGENCY_REASONS.some(er => reason.includes(er)))) {
+      stats.emergency++;
+    }
+    if (displayedReasons.some(reason => TRAFFIC_REASONS.some(tr => reason.includes(tr)))) {
+      stats.traffic++;
+    }
+    if (displayedReasons.some(reason => SAFETY_REASONS.some(sr => reason.includes(sr)))) {
+      stats.safety++;
+    }
+    if (displayedReasons.some(reason => MILITARY_REASONS.some(mr => reason.includes(mr))) ||
+        report.callsign?.toUpperCase().startsWith('RCH') ||
+        report.callsign?.toUpperCase().startsWith('CNV') ||
+        report.callsign?.toUpperCase().startsWith('IAF')) {
+      stats.military++;
+    }
+  }
+
+  return stats;
+}
 
 // Orbiting plane loader component
 function OrbitingPlaneLoader() {
@@ -79,9 +135,13 @@ interface DataStreamTableProps {
   onFlightUpdate?: (flight: SelectedFlight) => void; // Callback to update selected flight data
   selectedDate: Date;
   onNewAnomaly?: (flightId: string) => void; // Callback for new anomaly detection
+  highlightFilter?: StatFilter; // Filter to highlight matching flights
+  onStatsChange?: (stats: CalculatedStats) => void; // Callback to report calculated stats
+  aiResultsFilter?: string[] | null; // Filter to only show flights from AI results (flight IDs)
+  onClearAIFilter?: () => void; // Callback to clear the AI filter
 }
 
-export function DataStreamTable({ mode, selectedFlight, onFlightSelect, onFlightUpdate: _onFlightUpdate, selectedDate, onNewAnomaly }: DataStreamTableProps) {
+export function DataStreamTable({ mode, selectedFlight, onFlightSelect, onFlightUpdate: _onFlightUpdate, selectedDate, onNewAnomaly, highlightFilter, onStatsChange, aiResultsFilter, onClearAIFilter }: DataStreamTableProps) {
   const [reports, setReports] = useState<AnomalyReport[]>([]);
   const [flightStatuses, setFlightStatuses] = useState<Record<string, FlightStatus>>({});
   const [loading, setLoading] = useState(true);
@@ -188,6 +248,25 @@ export function DataStreamTable({ mode, selectedFlight, onFlightSelect, onFlight
     };
   }, [mode, selectedDate, fetchLiveData]);
 
+  // Filter reports by AI results if filter is active
+  const filteredReports = useMemo(() => {
+    if (!aiResultsFilter || aiResultsFilter.length === 0) {
+      return reports;
+    }
+    // Create a Set for faster lookup
+    const filterSet = new Set(aiResultsFilter);
+    return reports.filter(r => filterSet.has(r.flight_id));
+  }, [reports, aiResultsFilter]);
+
+  // Calculate and report stats when reports change
+  const calculatedStats = useMemo(() => calculateStats(filteredReports), [filteredReports]);
+  
+  useEffect(() => {
+    if (onStatsChange) {
+      onStatsChange(calculatedStats);
+    }
+  }, [calculatedStats, onStatsChange]);
+
   // Fetch flight statuses for live mode
   useEffect(() => {
     if (mode !== 'live') return;
@@ -287,6 +366,25 @@ export function DataStreamTable({ mode, selectedFlight, onFlightSelect, onFlight
 
   return (
     <div className="flex-1 flex flex-col min-h-0">
+      {/* AI Filter Active Indicator */}
+      {aiResultsFilter && aiResultsFilter.length > 0 && (
+        <div className="shrink-0 mx-3 mt-2 px-3 py-2 bg-[#a78bfa]/10 border border-[#a78bfa]/30 rounded-lg flex items-center justify-between">
+          <div className="flex items-center gap-2">
+            <Sparkles className="w-3.5 h-3.5 text-[#a78bfa]" />
+            <span className="text-[10px] font-semibold text-[#a78bfa]">
+              AI Filter Active — Showing {filteredReports.length} of {reports.length} flights
+            </span>
+          </div>
+          <button
+            onClick={onClearAIFilter}
+            className="w-5 h-5 flex items-center justify-center rounded-full bg-[#a78bfa]/20 hover:bg-[#a78bfa]/40 transition text-[#a78bfa] hover:text-white"
+            title="Clear AI filter"
+          >
+            <X className="w-3 h-3" />
+          </button>
+        </div>
+      )}
+
       {/* Header - Fixed with glass styling */}
       <div className="shrink-0 bg-black/40 backdrop-blur-sm border-b border-white/5">
         <div className="flex items-center justify-between mx-3 my-2 px-4 py-2.5 rounded-lg bg-white/[0.02] border border-white/5">
@@ -302,7 +400,7 @@ export function DataStreamTable({ mode, selectedFlight, onFlightSelect, onFlight
 
       {/* Scrollable flight rows */}
       <div className="flex-1 overflow-y-auto scrollbar-thin py-1">
-        {reports.map((report) => {
+        {filteredReports.map((report) => {
           const status = flightStatuses[report.flight_id];
           
           return (
@@ -316,14 +414,19 @@ export function DataStreamTable({ mode, selectedFlight, onFlightSelect, onFlight
               altitude={status?.altitude_ft}
               speed={status?.speed_kts}
               heading={status?.heading}
+              highlightFilter={highlightFilter}
             />
           );
         })}
 
-        {reports.length === 0 && (
+        {filteredReports.length === 0 && (
           <div className="flex flex-col items-center justify-center h-32 text-gray-500 text-xs gap-2">
             <span className="material-symbols-outlined text-2xl text-gray-600">search_off</span>
-            <span>No {mode === 'live' ? 'active flights' : 'system reports'} found</span>
+            <span>
+              {aiResultsFilter && aiResultsFilter.length > 0 
+                ? 'No matching flights from AI results found' 
+                : `No ${mode === 'live' ? 'active flights' : 'system reports'} found`}
+            </span>
           </div>
         )}
       </div>

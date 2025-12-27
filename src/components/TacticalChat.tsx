@@ -1,12 +1,20 @@
-import { useState, useRef, useEffect } from 'react';
+import { useState, useRef, useEffect, useCallback } from 'react';
 import clsx from 'clsx';
-import { Mic, Send, Paperclip, Plus, Play } from 'lucide-react';
+import { Mic, Send, Paperclip, Plus, Play, ThumbsDown, ThumbsUp, Box, Trash2, X } from 'lucide-react';
 import { ChatMessage, type Message } from './ChatMessage';
 import { AlertCard } from './AlertCard';
 import type { ReplayEvent } from './ReplayModal';
-import type { SelectedFlight } from '../types';
+import type { SelectedFlight, AnomalyReport, AIMapAction, HighlightState } from '../types';
 import { sendChatMessage, analyzeWithAI } from '../api';
 import { getAnomalyReason } from '../utils/reason';
+import { Flight3DMapReplay } from './Flight3DMapReplay';
+
+// AI Results interface for passing flights to parent
+export interface AIResultsData {
+  flights: AnomalyReport[];
+  query: string;
+  timestamp: number;
+}
 
 type ChatMode = 'current' | 'general';
 type ChatLanguage = 'en' | 'he';
@@ -21,6 +29,9 @@ interface ReplayData {
 interface TacticalChatProps {
   selectedFlight: SelectedFlight | null;
   onOpenReplay?: (data: ReplayData) => void;
+  onAIResults?: (data: AIResultsData) => void;
+  onHighlight?: (highlight: HighlightState | null) => void;
+  highlight?: HighlightState | null;
 }
 
 // Translations
@@ -44,6 +55,9 @@ const TRANSLATIONS = {
     errorMessage: 'Unable to process request. Please try again.',
     callsign: 'CALLSIGN',
     route: 'ROUTE',
+    clearChat: 'Clear',
+    cancel: 'Cancel',
+    cancelled: 'Request cancelled.',
   },
   he: {
     welcome: 'מערכת ONYX מוכנה. בחר טיסה מפאנל הפעולות או שאל שאלה כללית על נתוני טיסה.',
@@ -59,11 +73,14 @@ const TRANSLATIONS = {
     from: 'מ:',
     to: 'אל:',
     reason: 'סיבה:',
-    replay: 'הפעל מחדש',
+    replay: 'Replay',
     flightSelected: (name: string) => `טיסה ${name} נבחרה לניתוח.`,
     errorMessage: 'לא ניתן לעבד את הבקשה. נסה שוב.',
     callsign: 'אות קריאה',
     route: 'מסלול',
+    clearChat: 'נקה',
+    cancel: 'בטל',
+    cancelled: 'הבקשה בוטלה.',
   },
 };
 
@@ -87,13 +104,34 @@ function OnyxIcon({ className = "w-4 h-4" }: { className?: string }) {
   );
 }
 
-export function TacticalChat({ selectedFlight, onOpenReplay }: TacticalChatProps) {
+// Helper to parse AI actions from response
+function parseActionsFromResponse(actions: AIMapAction[] | undefined): HighlightState | null {
+  if (!actions || actions.length === 0) return null;
+  
+  const state: HighlightState = {};
+  
+  for (const action of actions) {
+    if (action.action === 'highlight_segment') {
+      state.segment = { startIndex: action.startIndex, endIndex: action.endIndex };
+    } else if (action.action === 'highlight_point') {
+      state.point = { lat: action.lat, lon: action.lon };
+    } else if (action.action === 'focus_time') {
+      state.focusTimestamp = action.timestamp;
+    }
+  }
+  
+  return Object.keys(state).length > 0 ? state : null;
+}
+
+export function TacticalChat({ selectedFlight, onOpenReplay, onAIResults, onHighlight, highlight }: TacticalChatProps) {
   const [mode, setMode] = useState<ChatMode>('general');
   const [input, setInput] = useState('');
   const [language, setLanguage] = useState<ChatLanguage>('he');
   const [messages, setMessages] = useState<Message[]>([getWelcomeMessage(language)]);
   const [isLoading, setIsLoading] = useState(false);
+  const [showFullScreen3D, setShowFullScreen3D] = useState(false);
   const messagesEndRef = useRef<HTMLDivElement>(null);
+  const abortControllerRef = useRef<AbortController | null>(null);
   
   const t = TRANSLATIONS[language];
   const isRTL = language === 'he';
@@ -115,21 +153,35 @@ export function TacticalChat({ selectedFlight, onOpenReplay }: TacticalChatProps
     if (!selectedFlight?.report?.full_report) return [];
     
     const ids: string[] = [];
-    const rules = selectedFlight.report.full_report.matched_rules || 
-                  selectedFlight.report.full_report.layer_1_rules?.report?.matched_rules || [];
     
-    rules.forEach((rule: { id?: number; details?: { events?: { other_flight?: string }[] } }) => {
-      // Proximity rule id is 4
-      if (rule.id === 4 && rule.details?.events) {
-        rule.details.events.forEach((ev: { other_flight?: string }) => {
-          if (ev.other_flight && !ids.includes(ev.other_flight)) {
-            ids.push(ev.other_flight);
-          }
-        });
-      }
-    });
+    // Check multiple locations for matched rules
+    const possibleRuleSources = [
+      selectedFlight.report.full_report.matched_rules,
+      selectedFlight.report.full_report.layer_1_rules?.report?.matched_rules,
+      selectedFlight.report.full_report.rules?.matched_rules,
+    ];
     
-    return ids.filter(id => id !== selectedFlight.flight_id);
+    for (const rules of possibleRuleSources) {
+      if (!Array.isArray(rules)) continue;
+      
+      rules.forEach((rule: { id?: number; name?: string; details?: { events?: { other_flight?: string; other_flight_id?: string }[] } }) => {
+        // Proximity rule can be id 4 or name contains "proximity"
+        const isProximityRule = rule.id === 4 || rule.name?.toLowerCase().includes('proximity');
+        
+        if (isProximityRule && rule.details?.events) {
+          rule.details.events.forEach((ev) => {
+            // Handle both field names: other_flight and other_flight_id
+            const otherId = ev.other_flight || ev.other_flight_id;
+            if (otherId && !ids.includes(otherId)) {
+              ids.push(otherId);
+            }
+          });
+        }
+      });
+    }
+    
+    // Filter out the main flight and any empty/invalid IDs
+    return ids.filter(id => id && id !== selectedFlight.flight_id && id !== 'UNKNOWN');
   };
 
   // Get replay events from the report - only show Proximity Alert events (rule.id === 4)
@@ -165,13 +217,38 @@ export function TacticalChat({ selectedFlight, onOpenReplay }: TacticalChatProps
     return events.sort((a, b) => a.timestamp - b.timestamp);
   };
 
+  // Clear conversation - reset to welcome message
+  const handleClearConversation = useCallback(() => {
+    setMessages([getWelcomeMessage(language)]);
+    if (onHighlight) onHighlight(null);
+  }, [language, onHighlight]);
+
+  // Cancel current request
+  const handleCancelRequest = useCallback(() => {
+    if (abortControllerRef.current) {
+      abortControllerRef.current.abort();
+      abortControllerRef.current = null;
+      setIsLoading(false);
+      
+      const cancelMessage: Message = {
+        id: `cancel-${Date.now()}`,
+        role: 'assistant',
+        content: t.cancelled,
+        timestamp: new Date().toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: false }),
+        sender: 'SYSTEM',
+      };
+      setMessages(prev => [...prev, cancelMessage]);
+    }
+  }, [t.cancelled]);
+
   const handleSend = async () => {
     if (!input.trim() || isLoading) return;
 
+    const userQuery = input.trim();
     const userMessage: Message = {
       id: `user-${Date.now()}`,
       role: 'user',
-      content: input,
+      content: userQuery,
       timestamp: new Date().toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: false }),
     };
 
@@ -179,8 +256,15 @@ export function TacticalChat({ selectedFlight, onOpenReplay }: TacticalChatProps
     setInput('');
     setIsLoading(true);
 
+    // Create abort controller for this request
+    abortControllerRef.current = new AbortController();
+    const signal = abortControllerRef.current.signal;
+
     try {
+      // Check if already aborted
+      if (signal.aborted) return;
       let responseText: string;
+      let flights: AnomalyReport[] | undefined;
 
       if (mode === 'current' && selectedFlight) {
         // Use /ai/analyze endpoint for flight-focused questions
@@ -188,7 +272,7 @@ export function TacticalChat({ selectedFlight, onOpenReplay }: TacticalChatProps
         const trackPoints = selectedFlight.track?.points || [];
         
         const response = await analyzeWithAI({
-          question: input,
+          question: userQuery,
           flight_id: selectedFlight.flight_id,
           flight_data: trackPoints,
           anomaly_report: selectedFlight.report,
@@ -199,16 +283,56 @@ export function TacticalChat({ selectedFlight, onOpenReplay }: TacticalChatProps
           language: language,
         });
         responseText = response.response;
+        
+        // Parse AI actions for map highlighting - show on main map first
+        if (response.actions && response.actions.length > 0) {
+          const parsedHighlight = parseActionsFromResponse(response.actions as AIMapAction[]);
+          if (parsedHighlight && onHighlight) {
+            // Pass highlight to parent - will show on main 2D map
+            // User can then click 3D button to see highlight there
+            onHighlight(parsedHighlight);
+          }
+        }
       } else {
         // Use /ai/reasoning endpoint for general queries
         const response = await sendChatMessage({
-          message: input,
+          message: userQuery,
           history: messages.slice(-10).map(m => ({
             role: m.role === 'system' ? 'assistant' : m.role,
             content: m.content,
           })),
         });
         responseText = response.response;
+        flights = response.flights;
+      }
+
+      // Check if AI response contains <fetch and return> marker or has flights
+      const hasFetchMarker = responseText.includes('<fetch and return>') || responseText.includes('<fetch_and_return>');
+      const hasFlights = flights && flights.length > 0;
+      
+      // If we have flights data from AI, send it to the AI Results tab
+      if ((hasFetchMarker || hasFlights) && onAIResults) {
+        // Clean the response text by removing the fetch marker
+        const cleanedResponse = responseText
+          .replace(/<fetch and return>/gi, '')
+          .replace(/<fetch_and_return>/gi, '')
+          .replace(/<\/fetch and return>/gi, '')
+          .replace(/<\/fetch_and_return>/gi, '')
+          .trim();
+        
+        if (hasFlights) {
+          onAIResults({
+            flights: flights!,
+            query: userQuery,
+            timestamp: Date.now(),
+          });
+          
+          // Update response to indicate results are available
+          responseText = cleanedResponse || `Found ${flights!.length} flight${flights!.length === 1 ? '' : 's'} matching your query. Results are now available in the AI Results tab.`;
+        } else if (hasFetchMarker) {
+          // The response has the marker but no flights - show message without modifying
+          responseText = cleanedResponse || responseText;
+        }
       }
 
       const assistantMessage: Message = {
@@ -219,8 +343,14 @@ export function TacticalChat({ selectedFlight, onOpenReplay }: TacticalChatProps
         sender: 'ONYX_AI',
       };
 
-      setMessages(prev => [...prev, assistantMessage]);
+      // Don't update messages if request was cancelled
+      if (!signal.aborted) {
+        setMessages(prev => [...prev, assistantMessage]);
+      }
     } catch (error) {
+      // Don't show error if request was cancelled
+      if (signal.aborted) return;
+      
       console.error('Chat error:', error);
       
       const errorMessage: Message = {
@@ -233,6 +363,7 @@ export function TacticalChat({ selectedFlight, onOpenReplay }: TacticalChatProps
 
       setMessages(prev => [...prev, errorMessage]);
     } finally {
+      abortControllerRef.current = null;
       setIsLoading(false);
     }
   };
@@ -243,6 +374,39 @@ export function TacticalChat({ selectedFlight, onOpenReplay }: TacticalChatProps
       handleSend();
     }
   };
+
+  // Full-screen 3D map view modal - uses highlight from props (passed from Layout)
+  if (showFullScreen3D && selectedFlight) {
+    return (
+      <Flight3DMapReplay 
+        flightId={selectedFlight.flight_id} 
+        onClose={() => {
+          setShowFullScreen3D(false);
+          // Don't clear highlight when closing - user might want to see it on main map
+        }}
+        highlight={highlight}
+        onClearHighlight={() => onHighlight?.(null)}
+        trackPoints={selectedFlight.track?.points}
+        secondaryFlightIds={getSecondaryFlightIds()}
+        aircraftType={selectedFlight.report?.aircraft_type}
+        callsign={selectedFlight.callsign || selectedFlight.report?.callsign}
+        // Embed chat in 3D view
+        embeddedChatProps={{
+          selectedFlight,
+          onHighlight,
+          messages,
+          isLoading,
+          input,
+          setInput,
+          handleSend,
+          handleKeyPress,
+          language,
+          t,
+          isRTL,
+        }}
+      />
+    );
+  }
 
   return (
     <div className={clsx("flex flex-col h-full glass-panel", isRTL && "rtl")} dir={isRTL ? 'rtl' : 'ltr'}>
@@ -262,30 +426,43 @@ export function TacticalChat({ selectedFlight, onOpenReplay }: TacticalChatProps
             </span>
           </div>
           
-          {/* Language Toggle */}
-          <div className="flex items-center bg-black/40 rounded-md p-0.5 border border-white/10">
+          {/* Clear & Language Toggle */}
+          <div className="flex items-center gap-2">
+            {/* Clear Conversation Button */}
             <button
-              onClick={() => setLanguage('en')}
-              className={clsx(
-                "px-2 py-0.5 text-[10px] font-bold rounded transition-all",
-                language === 'en'
-                  ? "bg-white/10 text-white"
-                  : "text-gray-500 hover:text-white"
-              )}
+              onClick={handleClearConversation}
+              className="flex items-center gap-1 px-2 py-1 text-[10px] font-medium text-gray-400 hover:text-white hover:bg-white/10 rounded-md border border-white/10 transition-all"
+              title={t.clearChat}
             >
-              EN
+              <Trash2 className="w-3 h-3" />
+              <span>{t.clearChat}</span>
             </button>
-            <button
-              onClick={() => setLanguage('he')}
-              className={clsx(
-                "px-2 py-0.5 text-[10px] font-medium rounded transition-all",
-                language === 'he'
-                  ? "bg-white/10 text-white"
-                  : "text-gray-500 hover:text-white"
-              )}
-            >
-              עב
-            </button>
+            
+            {/* Language Toggle */}
+            <div className="flex items-center bg-black/40 rounded-md p-0.5 border border-white/10">
+              <button
+                onClick={() => setLanguage('en')}
+                className={clsx(
+                  "px-2 py-0.5 text-[10px] font-bold rounded transition-all",
+                  language === 'en'
+                    ? "bg-white/10 text-white"
+                    : "text-gray-500 hover:text-white"
+                )}
+              >
+                EN
+              </button>
+              <button
+                onClick={() => setLanguage('he')}
+                className={clsx(
+                  "px-2 py-0.5 text-[10px] font-medium rounded transition-all",
+                  language === 'he'
+                    ? "bg-white/10 text-white"
+                    : "text-gray-500 hover:text-white"
+                )}
+              >
+                עב
+              </button>
+            </div>
           </div>
         </div>
 
@@ -330,10 +507,16 @@ export function TacticalChat({ selectedFlight, onOpenReplay }: TacticalChatProps
                 });
               }
             }}
+            onOpen3D={() => setShowFullScreen3D(true)} // Directly open full-screen 3D map
+            show3D={showFullScreen3D}
             translations={t}
           />
+          
+          {/* 3D View opens in full screen via Flight3DMapReplay */}
         </div>
       )}
+      
+      {/* Demo 3D Preview - removed to avoid WebGL conflicts */}
 
       {/* Messages Area */}
       <div className="flex-1 overflow-y-auto p-4 space-y-4 no-scrollbar scroll-smooth min-h-0">
@@ -357,9 +540,19 @@ export function TacticalChat({ selectedFlight, onOpenReplay }: TacticalChatProps
               <OnyxIcon className="w-3.5 h-3.5" />
             </div>
             <div className="glass-bubble-ai px-3 py-2 rounded-xl">
-              <div className="flex items-center gap-2">
-                <div className="w-1.5 h-1.5 bg-[#63d1eb] rounded-full animate-pulse" />
-                <span className="text-xs text-gray-400">{t.analyzing}</span>
+              <div className="flex items-center gap-3">
+                <div className="flex items-center gap-2">
+                  <div className="w-1.5 h-1.5 bg-[#63d1eb] rounded-full animate-pulse" />
+                  <span className="text-xs text-gray-400">{t.analyzing}</span>
+                </div>
+                {/* Cancel Button */}
+                <button
+                  onClick={handleCancelRequest}
+                  className="flex items-center gap-1 px-2 py-0.5 text-[10px] font-medium text-red-400 hover:text-red-300 hover:bg-red-500/20 rounded border border-red-500/30 transition-all"
+                >
+                  <X className="w-3 h-3" />
+                  <span>{t.cancel}</span>
+                </button>
               </div>
             </div>
           </div>
@@ -425,11 +618,15 @@ export function TacticalChat({ selectedFlight, onOpenReplay }: TacticalChatProps
 interface FlightContextCardProps {
   flight: SelectedFlight;
   onReplay: () => void;
+  onOpen3D: () => void;
+  show3D: boolean;
   translations: typeof TRANSLATIONS['en'];
 }
 
-function FlightContextCard({ flight, onReplay, translations: t }: FlightContextCardProps) {
+function FlightContextCard({ flight, onReplay, onOpen3D, show3D, translations: t }: FlightContextCardProps) {
   const reason = flight.report ? getAnomalyReason(flight.report) : 'N/A';
+  const isAnomaly = reason !== 'N/A';
+  const hasTrackData = flight.track && flight.track.points && flight.track.points.length > 0;
 
   return (
     <div className="space-y-2">
@@ -457,25 +654,68 @@ function FlightContextCard({ flight, onReplay, translations: t }: FlightContextC
         </div>
       </div>
 
-      {/* Row 2: Anomaly reason and Replay button (only if there's a reason) */}
-      {reason !== 'N/A' && (
-        <div className="flex items-center gap-2">
-          {/* Anomaly reason */}
+      {/* Row 2: Anomaly reason/status and buttons */}
+      <div className="flex items-center gap-2">
+        {/* Anomaly reason or status */}
+        {isAnomaly ? (
           <div className="flex-1 flex items-center gap-2 bg-red-500/10 border border-red-500/30 px-2.5 py-1.5 rounded-lg text-[10px] text-red-400">
             <span className="material-symbols-outlined text-sm">warning</span>
             <span className="truncate">{reason}</span>
           </div>
-          
-          {/* Replay Button */}
+        ) : (
+          <div className="flex-1 flex items-center gap-2 bg-green-500/10 border border-green-500/30 px-2.5 py-1.5 rounded-lg text-[10px] text-green-400">
+            <span className="material-symbols-outlined text-sm">check_circle</span>
+            <span>No anomaly detected</span>
+          </div>
+        )}
+        
+        {/* Feedback Button (visual only) */}
+        <button
+          className={clsx(
+            "flex items-center gap-1.5 px-3 py-1.5 rounded-lg border transition-all text-xs shrink-0",
+            isAnomaly
+              ? "bg-yellow-500/10 hover:bg-yellow-500/20 border-yellow-500/30 text-yellow-400"
+              : "bg-red-500/10 hover:bg-red-500/20 border-red-500/30 text-red-400"
+          )}
+          title={isAnomaly ? "Mark as not an anomaly" : "Mark as anomaly"}
+        >
+          {isAnomaly ? (
+            <>
+              <ThumbsDown className="w-3.5 h-3.5" />
+              <span className="font-semibold">Report Not Anomaly</span>
+            </>
+          ) : (
+            <>
+              <ThumbsUp className="w-3.5 h-3.5" />
+              <span className="font-semibold">Is Anomaly</span>
+            </>
+          )}
+        </button>
+        
+        {/* Replay Button */}
+        <button
+          onClick={onReplay}
+          className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-[#63d1eb]/10 hover:bg-[#63d1eb]/20 border border-[#224752] text-[#63d1eb] transition-all text-xs shrink-0"
+        >
+          <Play className="w-3.5 h-3.5" />
+          <span className="font-semibold">{t.replay}</span>
+        </button>
+        
+        {/* 3D View Button */}
+        {hasTrackData && (
           <button
-            onClick={onReplay}
-            className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-[#63d1eb]/10 hover:bg-[#63d1eb]/20 border border-[#224752] text-[#63d1eb] transition-all text-xs shrink-0"
+            onClick={onOpen3D}
+            className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg transition-all text-xs shrink-0 ${
+              show3D 
+                ? 'bg-purple-500/30 border-purple-500/50 text-purple-300' 
+                : 'bg-purple-500/10 hover:bg-purple-500/20 border-purple-500/30 text-purple-400'
+            } border`}
           >
-            <Play className="w-3.5 h-3.5" />
-            <span className="font-semibold">{t.replay}</span>
+            <Box className="w-3.5 h-3.5" />
+            <span className="font-semibold">3D</span>
           </button>
-        </div>
-      )}
+        )}
+      </div>
     </div>
   );
 }
