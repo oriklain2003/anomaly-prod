@@ -253,7 +253,11 @@ export function getAnomalyReason(report: AnomalyReport): string {
   if (reasons.length > 0) {
     // Show up to 2 reasons, abbreviated for space
     if (reasons.length === 1) {
-      return reasons[0];
+      let formated_reason = reasons[0];
+      if (formated_reason.includes('ther')) {
+        formated_reason = formated_reason.split(":")[1].trim();
+      }
+      return formated_reason;
     } else if (reasons.length === 2) {
       // Abbreviate long names for the combined display
       const abbrev = (s: string) => s.length > 12 ? s.slice(0, 10) + '..' : s;

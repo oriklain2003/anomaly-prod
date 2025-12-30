@@ -471,6 +471,17 @@ export const sendChatMessage = async (request: ChatRequest, signal?: AbortSignal
   return response.json();
 };
 
+// Proximity context for chat - information about other aircraft in proximity events
+export interface ProximityContext {
+  other_flight_id?: string;
+  other_callsign?: string;
+  distance_nm?: number;
+  altitude_diff_ft?: number;
+  timestamp?: number;
+  lat?: number;
+  lon?: number;
+}
+
 // Flight-focused analysis request
 export interface AnalyzeRequest {
   screenshot?: string;  // base64 PNG (optional)
@@ -482,6 +493,8 @@ export interface AnalyzeRequest {
   history?: { role: string; content: string }[];
   length?: 'short' | 'medium' | 'long';
   language?: string;
+  // Proximity context - other aircraft involved in proximity events
+  proximity_context?: ProximityContext[];
 }
 
 export interface AnalyzeResponse {
@@ -510,6 +523,7 @@ export const analyzeWithAI = async (request: AnalyzeRequest, signal?: AbortSigna
       history: request.history || [],
       length: request.length || 'medium',
       language: request.language || 'en',
+      proximity_context: request.proximity_context || [],
     }),
     signal,
   });

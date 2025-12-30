@@ -1,6 +1,6 @@
 import { useState, useMemo, useEffect } from 'react';
 import clsx from 'clsx';
-import { ChevronDown, ExternalLink, Plane, Info, ChevronRight } from 'lucide-react';
+import { ChevronDown, ExternalLink, Plane } from 'lucide-react';
 import type { AnomalyReport, FlightPhase, StatFilter, FlightTrack, FlightMetadata } from '../types';
 import { getAnomalyReason, getAnomalyReasons, getScoreColor, formatTime } from '../utils/reason';
 
@@ -97,7 +97,7 @@ export function FlightRow({
   metadata,
 }: FlightRowProps) {
   const [isExpanded, setIsExpanded] = useState(false);
-  const [showDetailedInfo, setShowDetailedInfo] = useState(false);
+  const [showDetailedInfo, ] = useState(false);
   
   // Check if this flight should be highlighted based on the filter
   const isHighlighted = matchesFilter(report, highlightFilter ?? null);
@@ -344,17 +344,7 @@ export function FlightRow({
           )}
 
           {/* Expand Info Button */}
-          <button
-            onClick={(e) => {
-              e.stopPropagation();
-              setShowDetailedInfo(!showDetailedInfo);
-            }}
-            className="flex items-center gap-1.5 px-2.5 py-1.5 text-[10px] font-semibold text-[#63d1eb] bg-[#63d1eb]/10 hover:bg-[#63d1eb]/20 border border-[#63d1eb]/30 hover:border-[#63d1eb]/50 rounded transition-all duration-300 mb-3"
-          >
-            <Info className="w-3 h-3" />
-            <span>Expand Info</span>
-            <ChevronRight className={clsx("w-3 h-3 transition-transform", showDetailedInfo && "rotate-90")} />
-          </button>
+
 
           {/* Detailed Flight Info Panel */}
           {showDetailedInfo && (

@@ -1,14 +1,285 @@
-import { useState, useRef, useEffect, useCallback } from 'react';
+import { useState, useRef, useEffect, useCallback, useMemo } from 'react';
 import clsx from 'clsx';
-import { Mic, Send, Paperclip, Plus, Play, ThumbsDown, ThumbsUp, Trash2, X, Box } from 'lucide-react';
+import { Mic, Send, Paperclip, Plus, Play, ThumbsDown, ThumbsUp, Trash2, Box, Brain } from 'lucide-react';
 import { ChatMessage, type Message } from './ChatMessage';
 import { AlertCard } from './AlertCard';
 import type { ReplayEvent } from './ReplayModal';
 import type { SelectedFlight, AnomalyReport, AIMapAction, HighlightState } from '../types';
-import { sendChatMessage, analyzeWithAI } from '../api';
+import { sendChatMessage, analyzeWithAI, type ProximityContext } from '../api';
 import { getAnomalyReason } from '../utils/reason';
 import { Flight3DMapReplay } from './Flight3DMapReplay';
 import { IncidentReportModal } from './IncidentReportModal';
+
+// Smart reasoning messages for each rule type
+const REASONING_MESSAGES: Record<number, string[]> = {
+  // 1: Emergency Squawks
+  1: [
+    'Analyzing transponder squawk codes...',
+    'Cross-referencing emergency frequencies...',
+    'Checking ATC communication logs...',
+    'Validating squawk 7500/7600/7700 patterns...',
+    'Scanning nearby traffic for response...',
+    'Reviewing emergency protocol adherence...',
+    'Correlating with flight plan deviations...',
+    'Assessing threat level indicators...',
+  ],
+  // 2: Crash
+  2: [
+    'Analyzing final track segments...',
+    'Calculating descent rate anomalies...',
+    'Checking terrain elevation data...',
+    'Cross-referencing with ground sensors...',
+    'Validating signal termination point...',
+    'Scanning for debris field indicators...',
+    'Reviewing last known position data...',
+    'Analyzing impact trajectory vectors...',
+  ],
+  // 3: Proximity Alert
+  3: [
+    'Analyzing both flight tracks...',
+    'Calculating minimum separation distances...',
+    'Checking airspace guidelines for the area...',
+    'Visualizing flight path intersections...',
+    'Simulating proximity event timeline...',
+    'Searching local database for context...',
+    'Evaluating collision risk metrics...',
+    'Cross-referencing altitude differentials...',
+  ],
+  // 4: Holding Pattern
+  4: [
+    'Detecting orbital flight patterns...',
+    'Analyzing turn radius consistency...',
+    'Calculating holding pattern duration...',
+    'Checking published holding procedures...',
+    'Validating entry and exit points...',
+    'Cross-referencing with ATC delays...',
+    'Evaluating fuel consumption impact...',
+    'Mapping pattern against standard holds...',
+  ],
+  // 5: Go Around
+  5: [
+    'Detecting missed approach patterns...',
+    'Analyzing approach abort altitude...',
+    'Checking runway conditions data...',
+    'Validating climb-out trajectory...',
+    'Cross-referencing weather reports...',
+    'Evaluating traffic separation factors...',
+    'Reviewing approach stabilization...',
+    'Scanning for secondary approach attempt...',
+  ],
+  // 6: Return to Land
+  6: [
+    'Analyzing flight path reversal...',
+    'Detecting return-to-origin pattern...',
+    'Checking for emergency declarations...',
+    'Evaluating diversion reasoning...',
+    'Cross-referencing with flight plan...',
+    'Validating fuel status indicators...',
+    'Scanning for technical anomalies...',
+    'Reviewing communication patterns...',
+  ],
+  // 7: Unplanned Landing
+  7: [
+    'Detecting off-schedule landing...',
+    'Analyzing destination deviation...',
+    'Checking alternate airport selection...',
+    'Evaluating emergency landing criteria...',
+    'Cross-referencing runway availability...',
+    'Validating approach procedures...',
+    'Scanning weather at landing site...',
+    'Reviewing diversion decision factors...',
+  ],
+  // 8: Signal Loss
+  8: [
+    'Analyzing signal dropout patterns...',
+    'Checking transponder continuity...',
+    'Mapping coverage blind spots...',
+    'Evaluating last known position...',
+    'Cross-referencing radar coverage...',
+    'Scanning for signal restoration...',
+    'Validating ADS-B transmission gaps...',
+    'Checking for intentional masking...',
+  ],
+  // 9: Off Course
+  9: [
+    'Analyzing flight path deviation...',
+    'Calculating route variance metrics...',
+    'Checking filed flight plan compliance...',
+    'Evaluating waypoint adherence...',
+    'Cross-referencing airway boundaries...',
+    'Scanning for weather avoidance...',
+    'Validating ATC clearance changes...',
+    'Mapping deviation severity levels...',
+  ],
+  // 10: Military Flight
+  10: [
+    'Detecting military aircraft signature...',
+    'Analyzing flight pattern characteristics...',
+    'Cross-referencing military callsigns...',
+    'Checking restricted airspace activity...',
+    'Evaluating formation flight patterns...',
+    'Scanning for tactical maneuvers...',
+    'Validating military transponder codes...',
+    'Reviewing defense coordination data...',
+  ],
+  // 11: Operational Military
+  11: [
+    'Analyzing military operation patterns...',
+    'Detecting training exercise signatures...',
+    'Cross-referencing NOTAM restrictions...',
+    'Evaluating operational tempo...',
+    'Checking military base proximity...',
+    'Scanning for coordinated movements...',
+    'Validating mission profile indicators...',
+    'Reviewing operational airspace usage...',
+  ],
+  // 12: Suspicious Behavior
+  12: [
+    'Analyzing anomalous flight patterns...',
+    'Detecting behavioral irregularities...',
+    'Cross-referencing threat databases...',
+    'Evaluating pattern deviation severity...',
+    'Checking known suspicious indicators...',
+    'Scanning historical flight comparisons...',
+    'Validating identity verification data...',
+    'Reviewing security protocol triggers...',
+  ],
+  // 13: Flight Academy
+  13: [
+    'Detecting training flight patterns...',
+    'Analyzing practice maneuver sequences...',
+    'Cross-referencing flight school data...',
+    'Evaluating student pilot indicators...',
+    'Checking training airspace usage...',
+    'Scanning for touch-and-go patterns...',
+    'Validating instructor presence...',
+    'Reviewing training route compliance...',
+  ],
+  // 14: GPS Jamming
+  14: [
+    'Analyzing GPS signal integrity...',
+    'Detecting position spoofing patterns...',
+    'Cross-referencing multi-sensor data...',
+    'Evaluating navigation system accuracy...',
+    'Checking known jamming zones...',
+    'Scanning for signal interference...',
+    'Validating position consistency...',
+    'Mapping GPS anomaly distribution...',
+  ],
+};
+
+// Default/general reasoning messages when no specific rule is detected
+const DEFAULT_REASONING_MESSAGES = [
+  'Initializing flight analysis',
+  'Loading historical flight data',
+  'Processing track point coordinates',
+  'Analyzing altitude and speed profiles',
+  'Cross-referencing with local databases',
+  'Evaluating anomaly indicators',
+  'Scanning for pattern irregularities',
+  'Generating comprehensive assessment',
+];
+
+// Smart Reasoning Loader Component
+interface SmartReasoningLoaderProps {
+  ruleId?: number | null;
+  isRTL?: boolean;
+}
+
+function SmartReasoningLoader({ ruleId, isRTL = false }: SmartReasoningLoaderProps) {
+  const [currentIndex, setCurrentIndex] = useState(0);
+  const [isVisible, setIsVisible] = useState(true);
+  
+  const messages = useMemo(() => {
+    if (ruleId && REASONING_MESSAGES[ruleId]) {
+      return REASONING_MESSAGES[ruleId];
+    }
+    return DEFAULT_REASONING_MESSAGES;
+  }, [ruleId]);
+
+  useEffect(() => {
+    const interval = setInterval(() => {
+      setIsVisible(false);
+      setTimeout(() => {
+        setCurrentIndex((prev) => (prev + 1) % messages.length);
+        setIsVisible(true);
+      }, 300);
+    }, 8000); // Stay longer - 4 seconds per message
+
+    return () => clearInterval(interval);
+  }, [messages.length]);
+
+  return (
+    <div className={clsx("flex items-start gap-2.5", isRTL && "flex-row-reverse")}>
+      {/* Minimal ONYX Avatar */}
+      <div className="relative shrink-0">
+        <div className="w-7 h-7 rounded-full bg-white/5 backdrop-blur-sm border border-white/10 flex items-center justify-center">
+          <Brain className="w-3.5 h-3.5 text-gray-400 animate-pulse" />
+        </div>
+      </div>
+      
+      {/* Clean glass reasoning text */}
+      <div className="flex-1">
+        <p 
+          className={clsx(
+            "text-[13px] text-gray-500 transition-all duration-300 ease-out",
+            isVisible ? "opacity-100 translate-y-0" : "opacity-0 translate-y-1"
+          )}
+        >
+          {messages[currentIndex]}
+        </p>
+      </div>
+    </div>
+  );
+}
+
+// Helper to extract primary rule ID from selected flight
+function extractPrimaryRuleId(selectedFlight: SelectedFlight | null): number | null {
+  if (!selectedFlight?.report) return null;
+  
+  // PRIORITY 1: Check rule_id directly on the report (from feedback_tagged db)
+  if (selectedFlight.report.rule_id) {
+    return selectedFlight.report.rule_id;
+  }
+  
+  // PRIORITY 2: Check rule_ids array (from feedback_tagged db - multiple rules)
+  if (selectedFlight.report.rule_ids && selectedFlight.report.rule_ids.length > 0) {
+    return selectedFlight.report.rule_ids[0];
+  }
+  
+  // PRIORITY 3: Check matched_rule_ids (denormalized from anomaly_reports)
+  if (selectedFlight.report.matched_rule_ids) {
+    let ids: (string | number)[] = [];
+    if (typeof selectedFlight.report.matched_rule_ids === 'string') {
+      ids = selectedFlight.report.matched_rule_ids.split(',').map(s => s.trim()).filter(s => s);
+    } else if (Array.isArray(selectedFlight.report.matched_rule_ids)) {
+      ids = selectedFlight.report.matched_rule_ids;
+    }
+    if (ids.length > 0) {
+      const firstId = ids[0];
+      return typeof firstId === 'string' ? parseInt(firstId, 10) : firstId;
+    }
+  }
+  
+  // PRIORITY 4: Check full_report for matched_rules (automated detection)
+  if (selectedFlight.report.full_report) {
+    const possibleRuleSources = [
+      selectedFlight.report.full_report.matched_rules,
+      selectedFlight.report.full_report.layer_1_rules?.report?.matched_rules,
+      selectedFlight.report.full_report.rules?.matched_rules,
+    ];
+    
+    for (const rules of possibleRuleSources) {
+      if (!Array.isArray(rules) || rules.length === 0) continue;
+      const firstRule = rules[0];
+      if (firstRule && typeof firstRule === 'object' && firstRule.id) {
+        return firstRule.id;
+      }
+    }
+  }
+  
+  return null;
+}
 
 // AI Results interface for passing flights to parent
 export interface AIResultsData {
@@ -218,29 +489,69 @@ export function TacticalChat({ selectedFlight, onOpenReplay, onAIResults, onHigh
     return events.sort((a, b) => a.timestamp - b.timestamp);
   };
 
+  // Get proximity context for AI chat - extracts other aircraft information from proximity events
+  const getProximityContext = (): ProximityContext[] => {
+    if (!selectedFlight?.report?.full_report) return [];
+    
+    const proximityContext: ProximityContext[] = [];
+    
+    // Check multiple locations for matched rules
+    const possibleRuleSources = [
+      selectedFlight.report.full_report.matched_rules,
+      selectedFlight.report.full_report.layer_1_rules?.report?.matched_rules,
+      selectedFlight.report.full_report.rules?.matched_rules,
+    ];
+    
+    for (const rules of possibleRuleSources) {
+      if (!Array.isArray(rules)) continue;
+      
+      rules.forEach((rule: { id?: number; name?: string; details?: { events?: { 
+        other_flight?: string; 
+        other_flight_id?: string; 
+        other_callsign?: string;
+        distance_nm?: number;
+        altitude_diff_ft?: number;
+        timestamp?: number;
+        lat?: number;
+        lon?: number;
+      }[] } }) => {
+        // Proximity rule can be id 4 or name contains "proximity"
+        const isProximityRule = rule.id === 4 || rule.name?.toLowerCase().includes('proximity');
+        
+        if (isProximityRule && rule.details?.events) {
+          rule.details.events.forEach((ev) => {
+            const otherId = ev.other_flight || ev.other_flight_id;
+            if (otherId && otherId !== selectedFlight.flight_id && otherId !== 'UNKNOWN') {
+              proximityContext.push({
+                other_flight_id: otherId,
+                other_callsign: ev.other_callsign,
+                distance_nm: ev.distance_nm,
+                altitude_diff_ft: ev.altitude_diff_ft,
+                timestamp: ev.timestamp,
+                lat: ev.lat,
+                lon: ev.lon,
+              });
+            }
+          });
+        }
+      });
+    }
+    
+    // Remove duplicates based on other_flight_id
+    const seen = new Set<string>();
+    return proximityContext.filter(ctx => {
+      if (!ctx.other_flight_id || seen.has(ctx.other_flight_id)) return false;
+      seen.add(ctx.other_flight_id);
+      return true;
+    });
+  };
+
   // Clear conversation - reset to welcome message
   const handleClearConversation = useCallback(() => {
     setMessages([getWelcomeMessage(language)]);
     if (onHighlight) onHighlight(null);
   }, [language, onHighlight]);
 
-  // Cancel current request
-  const handleCancelRequest = useCallback(() => {
-    if (abortControllerRef.current) {
-      abortControllerRef.current.abort();
-      abortControllerRef.current = null;
-      setIsLoading(false);
-      
-      const cancelMessage: Message = {
-        id: `cancel-${Date.now()}`,
-        role: 'assistant',
-        content: t.cancelled,
-        timestamp: new Date().toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: false }),
-        sender: 'SYSTEM',
-      };
-      setMessages(prev => [...prev, cancelMessage]);
-    }
-  }, [t.cancelled]);
 
   const handleSend = async () => {
     if (!input.trim() || isLoading) return;
@@ -272,6 +583,9 @@ export function TacticalChat({ selectedFlight, onOpenReplay, onAIResults, onHigh
         // flight_data must be an array of track points, not the FlightTrack object
         const trackPoints = selectedFlight.track?.points || [];
         
+        // Get proximity context if this flight has proximity events
+        const proximityContext = getProximityContext();
+        
         const response = await analyzeWithAI({
           question: userQuery,
           flight_id: selectedFlight.flight_id,
@@ -282,6 +596,7 @@ export function TacticalChat({ selectedFlight, onOpenReplay, onAIResults, onHigh
             content: m.content,
           })),
           language: language,
+          proximity_context: proximityContext.length > 0 ? proximityContext : undefined,
         });
         responseText = response.response;
         
@@ -531,26 +846,11 @@ export function TacticalChat({ selectedFlight, onOpenReplay, onAIResults, onHigh
         ))}
         
         {isLoading && (
-          <div className={clsx("flex items-center gap-2", isRTL && "flex-row-reverse")}>
-            <div className="w-7 h-7 rounded-full bg-white text-black flex items-center justify-center shadow-[0_0_15px_rgba(255,255,255,0.3)]">
-              <OnyxIcon className="w-3.5 h-3.5" />
-            </div>
-            <div className="glass-bubble-ai px-3 py-2 rounded-xl">
-              <div className="flex items-center gap-3">
-                <div className="flex items-center gap-2">
-                  <div className="w-1.5 h-1.5 bg-[#63d1eb] rounded-full animate-pulse" />
-                  <span className="text-xs text-gray-400">{t.analyzing}</span>
-                </div>
-                {/* Cancel Button */}
-                <button
-                  onClick={handleCancelRequest}
-                  className="flex items-center gap-1 px-2 py-0.5 text-[10px] font-medium text-red-400 hover:text-red-300 hover:bg-red-500/20 rounded border border-red-500/30 transition-all"
-                >
-                  <X className="w-3 h-3" />
-                  <span>{t.cancel}</span>
-                </button>
-              </div>
-            </div>
+          <div className={clsx("flex items-start gap-2.5", isRTL && "flex-row-reverse")}>
+            <SmartReasoningLoader 
+              ruleId={mode === 'current' ? extractPrimaryRuleId(selectedFlight) : null} 
+              isRTL={isRTL}
+            />
           </div>
         )}
         

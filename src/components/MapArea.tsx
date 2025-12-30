@@ -55,7 +55,7 @@ export function MapArea({ selectedFlight, mode = 'history', onFlightClick, highl
         <div className="absolute top-4 left-1/2 -translate-x-1/2 z-30">
           <div className="flex items-center gap-2 px-4 py-2 bg-orange-500/20 backdrop-blur-md border border-orange-500/50 rounded-full shadow-[0_0_20px_rgba(249,115,22,0.3)]">
             <span className="text-orange-400 text-sm font-semibold">
-              🤖 AI Highlight Active
+               AI Highlight Active
             </span>
             <button
               onClick={onClearHighlight}

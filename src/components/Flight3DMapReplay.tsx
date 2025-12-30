@@ -5,12 +5,54 @@ import { OrbitControls, Line, Text, Stars, useGLTF } from '@react-three/drei';
 import * as THREE from 'three';
 import maplibregl from 'maplibre-gl';
 import 'maplibre-gl/dist/maplibre-gl.css';
-import { X, Play, Pause, SkipBack, SkipForward, RotateCcw, Target, Send, Mic, ChevronRight, MessageSquare, Video, Orbit } from 'lucide-react';
+import { X, Play, Pause, SkipBack, SkipForward, RotateCcw, Target, Send, Mic, ChevronRight, MessageSquare, Video, Orbit, Brain } from 'lucide-react';
 import { ChatMessage, type Message } from './ChatMessage';
 import { fetchFeedbackTrack, fetchUnifiedTrack, fetchReplayOtherFlight } from '../api';
 import type { TrackPoint, FlightTrack, HighlightState } from '../types';
 import { WORLD_AIRPORTS } from '../data/airports';
 import clsx from 'clsx';
+
+// Compact reasoning messages for embedded 3D chat
+const COMPACT_REASONING_MESSAGES = [
+  'Analyzing flight data...',
+  'Processing track points...',
+  'Evaluating anomalies...',
+  'Cross-referencing data...',
+  'Generating response...',
+];
+
+// Compact Smart Reasoning Loader for embedded chat - clean glass style
+function CompactReasoningLoader({ isRTL = false }: { isRTL?: boolean }) {
+  const [currentIndex, setCurrentIndex] = useState(0);
+  const [isVisible, setIsVisible] = useState(true);
+
+  useEffect(() => {
+    const interval = setInterval(() => {
+      setIsVisible(false);
+      setTimeout(() => {
+        setCurrentIndex((prev) => (prev + 1) % COMPACT_REASONING_MESSAGES.length);
+        setIsVisible(true);
+      }, 250);
+    }, 3500);
+    return () => clearInterval(interval);
+  }, []);
+
+  return (
+    <div className={clsx("flex items-center gap-2", isRTL && "flex-row-reverse")}>
+      <div className="w-5 h-5 rounded-full bg-white/5 backdrop-blur-sm border border-white/10 flex items-center justify-center shrink-0">
+        <Brain className="w-2.5 h-2.5 text-gray-500 animate-pulse" />
+      </div>
+      <p 
+        className={clsx(
+          "text-xs text-gray-500 transition-all duration-250 ease-out",
+          isVisible ? "opacity-100" : "opacity-0"
+        )}
+      >
+        {COMPACT_REASONING_MESSAGES[currentIndex]}
+      </p>
+    </div>
+  );
+}
 
 // Haversine distance calculation (nautical miles)
 function getDistanceNM(lat1: number, lon1: number, lat2: number, lon2: number): number {
@@ -2016,19 +2058,7 @@ export function Flight3DMapReplay({ flightId, onClose, highlight, onClearHighlig
               ))}
               
               {embeddedChatProps.isLoading && (
-                <div className={clsx("flex items-center gap-2", embeddedChatProps.isRTL && "flex-row-reverse")}>
-                  <div className="w-6 h-6 rounded-full bg-white text-black flex items-center justify-center shadow-[0_0_10px_rgba(255,255,255,0.3)]">
-                    <svg className="w-3 h-3" fill="none" stroke="currentColor" strokeLinecap="round" strokeLinejoin="round" strokeWidth="2.5" viewBox="0 0 24 24">
-                      <path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z" />
-                    </svg>
-                  </div>
-                  <div className="bg-black/60 px-3 py-2 rounded-lg border border-cyan-500/20">
-                    <div className="flex items-center gap-2">
-                      <div className="w-1.5 h-1.5 bg-cyan-400 rounded-full animate-pulse" />
-                      <span className="text-xs text-gray-400">{embeddedChatProps.t.analyzing}</span>
-                    </div>
-                  </div>
-                </div>
+                <CompactReasoningLoader isRTL={embeddedChatProps.isRTL} />
               )}
             </div>
           )}
