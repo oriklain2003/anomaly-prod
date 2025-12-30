@@ -1,6 +1,6 @@
 import { useState, useRef, useEffect, useCallback } from 'react';
 import clsx from 'clsx';
-import { Mic, Send, Paperclip, Plus, Play, ThumbsDown, ThumbsUp, Box, Trash2, X } from 'lucide-react';
+import { Mic, Send, Paperclip, Plus, Play, ThumbsDown, ThumbsUp, Trash2, X, Box } from 'lucide-react';
 import { ChatMessage, type Message } from './ChatMessage';
 import { AlertCard } from './AlertCard';
 import type { ReplayEvent } from './ReplayModal';
@@ -8,6 +8,7 @@ import type { SelectedFlight, AnomalyReport, AIMapAction, HighlightState } from 
 import { sendChatMessage, analyzeWithAI } from '../api';
 import { getAnomalyReason } from '../utils/reason';
 import { Flight3DMapReplay } from './Flight3DMapReplay';
+import { IncidentReportModal } from './IncidentReportModal';
 
 // AI Results interface for passing flights to parent
 export interface AIResultsData {
@@ -126,7 +127,7 @@ function parseActionsFromResponse(actions: AIMapAction[] | undefined): Highlight
 export function TacticalChat({ selectedFlight, onOpenReplay, onAIResults, onHighlight, highlight }: TacticalChatProps) {
   const [mode, setMode] = useState<ChatMode>('general');
   const [input, setInput] = useState('');
-  const [language, setLanguage] = useState<ChatLanguage>('he');
+  const [language, _setLanguage] = useState<ChatLanguage>('he');
   const [messages, setMessages] = useState<Message[]>([getWelcomeMessage(language)]);
   const [isLoading, setIsLoading] = useState(false);
   const [showFullScreen3D, setShowFullScreen3D] = useState(false);
@@ -438,58 +439,53 @@ export function TacticalChat({ selectedFlight, onOpenReplay, onAIResults, onHigh
               <span>{t.clearChat}</span>
             </button>
             
-            {/* Language Toggle */}
-            <div className="flex items-center bg-black/40 rounded-md p-0.5 border border-white/10">
-              <button
-                onClick={() => setLanguage('en')}
-                className={clsx(
-                  "px-2 py-0.5 text-[10px] font-bold rounded transition-all",
-                  language === 'en'
-                    ? "bg-white/10 text-white"
-                    : "text-gray-500 hover:text-white"
-                )}
-              >
-                EN
-              </button>
-              <button
-                onClick={() => setLanguage('he')}
-                className={clsx(
-                  "px-2 py-0.5 text-[10px] font-medium rounded transition-all",
-                  language === 'he'
-                    ? "bg-white/10 text-white"
-                    : "text-gray-500 hover:text-white"
-                )}
-              >
-                עב
-              </button>
-            </div>
+
           </div>
         </div>
 
-        {/* Mode Tabs with underline style */}
-        <div className="flex items-center gap-6">
-          <button
-            onClick={() => setMode('current')}
-            className={clsx(
-              "pb-2 text-xs font-medium transition-all",
-              mode === 'current'
-                ? "border-b-2 border-[#63d1eb] text-[#63d1eb]"
-                : "border-b-2 border-transparent text-gray-400 hover:text-white"
-            )}
-          >
-            {t.current} ({t.currentOther})
-          </button>
-          <button
-            onClick={() => setMode('general')}
-            className={clsx(
-              "pb-2 text-xs font-medium transition-all",
-              mode === 'general'
-                ? "border-b-2 border-[#63d1eb] text-[#63d1eb]"
-                : "border-b-2 border-transparent text-gray-400 hover:text-white"
-            )}
-          >
-            {t.general} ({t.generalOther})
-          </button>
+        {/* Mode Tabs with underline style + Anomaly Reason */}
+        <div className="flex items-center gap-4">
+          <div className="flex items-center gap-6">
+            <button
+              onClick={() => setMode('current')}
+              className={clsx(
+                "pb-2 text-xs font-medium transition-all",
+                mode === 'current'
+                  ? "border-b-2 border-[#63d1eb] text-[#63d1eb]"
+                  : "border-b-2 border-transparent text-gray-400 hover:text-white"
+              )}
+            >
+              {t.current} ({t.currentOther})
+            </button>
+            <button
+              onClick={() => setMode('general')}
+              className={clsx(
+                "pb-2 text-xs font-medium transition-all",
+                mode === 'general'
+                  ? "border-b-2 border-[#63d1eb] text-[#63d1eb]"
+                  : "border-b-2 border-transparent text-gray-400 hover:text-white"
+              )}
+            >
+              {t.general} ({t.generalOther})
+            </button>
+          </div>
+          
+          {/* Anomaly Reason Badge - shown when flight is focused */}
+          {mode === 'current' && selectedFlight && (() => {
+            const reason = selectedFlight.report ? getAnomalyReason(selectedFlight.report) : 'N/A';
+            const isAnomaly = reason !== 'N/A';
+            return isAnomaly ? (
+              <div className="flex items-center gap-1.5 bg-red-500/15 border border-red-500/40 px-2 py-1 rounded text-[9px] text-red-400 font-medium ml-auto">
+                <span className="material-symbols-outlined text-xs">warning</span>
+                <span className="truncate max-w-[120px]">{reason}</span>
+              </div>
+            ) : (
+              <div className="flex items-center gap-1.5 bg-green-500/10 border border-green-500/30 px-2 py-1 rounded text-[9px] text-green-400 font-medium ml-auto">
+                <span className="material-symbols-outlined text-xs">check_circle</span>
+                <span>Normal</span>
+              </div>
+            );
+          })()}
         </div>
       </div>
 
@@ -623,99 +619,155 @@ interface FlightContextCardProps {
   translations: typeof TRANSLATIONS['en'];
 }
 
-function FlightContextCard({ flight, onReplay, onOpen3D, show3D, translations: t }: FlightContextCardProps) {
+function FlightContextCard({ flight, onReplay, onOpen3D, show3D: _show3D, translations: t }: FlightContextCardProps) {
+  const [showIncidentModal, setShowIncidentModal] = useState(false);
+  const [feedbackLoading, setFeedbackLoading] = useState(false);
+  const [feedbackSuccess, setFeedbackSuccess] = useState(false);
   const reason = flight.report ? getAnomalyReason(flight.report) : 'N/A';
   const isAnomaly = reason !== 'N/A';
-  const hasTrackData = flight.track && flight.track.points && flight.track.points.length > 0;
+
+  // Handle feedback button with loading animation
+  const handleFeedbackClick = () => {
+    setFeedbackLoading(true);
+    
+    if (isAnomaly) {
+      // "False Anomaly" case - just show loading then success, no modal
+      setTimeout(() => {
+        setFeedbackLoading(false);
+        setFeedbackSuccess(true);
+        // Reset success state after 2 seconds
+        setTimeout(() => setFeedbackSuccess(false), 2000);
+      }, 4000);
+    } else {
+      // "Report Anomaly" case - show loading then open modal for detailed report
+      setTimeout(() => {
+        setFeedbackLoading(false);
+        setShowIncidentModal(true);
+      }, 4000);
+    }
+  };
 
   return (
-    <div className="space-y-2">
-      {/* Row 1: Callsign and Route */}
-      <div className="glass-card-enhanced rounded-lg p-2 flex items-center gap-3">
-        {/* Callsign with indicator */}
-        <div className="flex items-center gap-2 px-2.5 py-1 rounded bg-black/30 border border-white/10">
-          <span className="w-1.5 h-1.5 rounded-full bg-[#00ffa3] shadow-[0_0_8px_rgba(0,255,163,0.9)] animate-pulse" />
-          <span className="text-[9px] uppercase tracking-wider text-gray-400 font-bold">{t.callsign}</span>
-          <span className="text-sm font-bold text-white font-mono">
-            {flight.callsign || flight.flight_id.slice(0, 6)}
-          </span>
-        </div>
-        
-        {/* Route */}
-        <div className="flex items-center gap-2 flex-1">
-          <span className="text-[9px] uppercase tracking-wider text-gray-500 font-bold">{t.route}</span>
-          <div className="flex items-center gap-1.5 text-xs">
-          <span className="material-symbols-outlined text-[#00ffa3] text-sm">flight_land</span>
-            <span className="font-semibold text-white">{flight.origin || '---'}</span>
-            <span className="material-symbols-outlined text-gray-500 text-[10px]">arrow_forward</span>
-            <span className="font-semibold text-white">{flight.destination || '---'}</span>
-            <span className="material-symbols-outlined text-[#63d1eb] text-sm">flight_takeoff</span>
+    <>
+      {/* Incident Report Modal */}
+      <IncidentReportModal
+        isOpen={showIncidentModal}
+        onClose={() => setShowIncidentModal(false)}
+        flight={flight}
+        isAnomaly={isAnomaly}
+        anomalyReason={reason}
+      />
+      
+      <div className="space-y-2">
+        {/* Row 1: Callsign and Route */}
+        <div className="glass-card-enhanced rounded-lg p-2 flex items-center gap-3">
+          {/* Callsign with indicator */}
+          <div className="flex items-center gap-2 px-2.5 py-1 rounded bg-black/30 border border-white/10">
+            <span className="w-1.5 h-1.5 rounded-full bg-[#00ffa3] shadow-[0_0_8px_rgba(0,255,163,0.9)] animate-pulse" />
+            <span className="text-[9px] uppercase tracking-wider text-gray-400 font-bold">{t.callsign}</span>
+            <span className="text-sm font-bold text-white font-mono">
+              {flight.callsign || flight.flight_id.slice(0, 6)}
+            </span>
+          </div>
+          
+          {/* Route: Origin → Destination */}
+          <div className="flex items-center gap-2 flex-1">
+            <span className="text-[9px] uppercase tracking-wider text-gray-500 font-bold">{t.route}</span>
+            <div className="flex items-center gap-2 text-xs">
+              {/* Origin with takeoff icon */}
+              <div className="flex items-center gap-1 bg-[#00ffa3]/10 border border-[#00ffa3]/30 px-2 py-0.5 rounded">
+                
+                <span className="material-symbols-outlined text-[#00ffa3] text-sm">flight_land</span>
+                <span className="font-bold text-[#00ffa3]">{flight.destination || '---'}</span>
+              </div>
+              <span className="material-symbols-outlined text-gray-500 text-sm">arrow_forward</span>
+              {/* Destination with landing icon */}
+              <div className="flex items-center gap-1 bg-[#63d1eb]/10 border border-[#63d1eb]/30 px-2 py-0.5 rounded">
+                <span className="font-bold text-[#63d1eb]">{flight.origin || '---'}</span>
+                <span className="material-symbols-outlined text-[#63d1eb] text-sm">flight_takeoff</span>
+              </div>
+            </div>
           </div>
         </div>
-      </div>
 
-      {/* Row 2: Anomaly reason/status and buttons */}
-      <div className="flex items-center gap-2">
-        {/* Anomaly reason or status */}
-        {isAnomaly ? (
-          <div className="flex-1 flex items-center gap-2 bg-red-500/10 border border-red-500/30 px-2.5 py-1.5 rounded-lg text-[10px] text-red-400">
-            <span className="material-symbols-outlined text-sm">warning</span>
-            <span className="truncate">{reason}</span>
-          </div>
-        ) : (
-          <div className="flex-1 flex items-center gap-2 bg-green-500/10 border border-green-500/30 px-2.5 py-1.5 rounded-lg text-[10px] text-green-400">
-            <span className="material-symbols-outlined text-sm">check_circle</span>
-            <span>No anomaly detected</span>
-          </div>
-        )}
-        
-        {/* Feedback Button (visual only) */}
-        <button
-          className={clsx(
-            "flex items-center gap-1.5 px-3 py-1.5 rounded-lg border transition-all text-xs shrink-0",
-            isAnomaly
-              ? "bg-yellow-500/10 hover:bg-yellow-500/20 border-yellow-500/30 text-yellow-400"
-              : "bg-red-500/10 hover:bg-red-500/20 border-red-500/30 text-red-400"
-          )}
-          title={isAnomaly ? "Mark as not an anomaly" : "Mark as anomaly"}
-        >
-          {isAnomaly ? (
-            <>
-              <ThumbsDown className="w-3.5 h-3.5" />
-              <span className="font-semibold">Report Not Anomaly</span>
-            </>
-          ) : (
-            <>
-              <ThumbsUp className="w-3.5 h-3.5" />
-              <span className="font-semibold">Is Anomaly</span>
-            </>
-          )}
-        </button>
-        
-        {/* Replay Button */}
-        <button
-          onClick={onReplay}
-          className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-[#63d1eb]/10 hover:bg-[#63d1eb]/20 border border-[#224752] text-[#63d1eb] transition-all text-xs shrink-0"
-        >
-          <Play className="w-3.5 h-3.5" />
-          <span className="font-semibold">{t.replay}</span>
-        </button>
-        
-        {/* 3D View Button */}
-        {hasTrackData && (
+        {/* Row 2: Action buttons */}
+        <div className="flex items-center gap-2">
+          {/* Feedback Button - Opens Incident Report Modal */} 
+          <button
+            onClick={handleFeedbackClick}
+            disabled={feedbackLoading || feedbackSuccess}
+            className={clsx(
+              "flex items-center gap-1.5 px-3 py-1.5 rounded-lg border transition-all text-xs shrink-0 relative overflow-hidden",
+              feedbackSuccess
+                ? "bg-green-500/20 border-green-500/50 text-green-400 cursor-default"
+                : feedbackLoading 
+                  ? "cursor-wait opacity-90"
+                  : isAnomaly
+                    ? "bg-yellow-500/10 hover:bg-yellow-500/20 border-yellow-500/30 text-yellow-400 hover:shadow-[0_0_15px_rgba(234,179,8,0.2)]"
+                    : "bg-red-500/10 hover:bg-red-500/20 border-red-500/30 text-red-400 hover:shadow-[0_0_15px_rgba(239,68,68,0.2)]",
+              feedbackLoading && (isAnomaly ? "border-yellow-500/50 text-yellow-300" : "border-red-500/50 text-red-300")
+            )}
+            title={isAnomaly ? "Report as false positive" : "Report as anomaly"}
+          >
+            {/* Loading progress bar */}
+            {feedbackLoading && (
+              <div 
+                className={clsx(
+                  "absolute inset-0 h-full",
+                  isAnomaly ? "bg-yellow-500/30" : "bg-red-500/30"
+                )}
+                style={{
+                  animation: 'loadingProgress 4s ease-out forwards',
+                }}
+              />
+            )}
+            <span className="relative z-10 flex items-center gap-1.5">
+              {feedbackLoading ? (
+                <>
+                  <svg className="animate-spin w-3.5 h-3.5" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                    <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
+                    <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                  </svg>
+                  <span className="font-semibold">Processing...</span>
+                </>
+              ) : feedbackSuccess ? (
+                <>
+                  <span className="material-symbols-outlined text-sm">check_circle</span>
+                  <span className="font-semibold">Submitted!</span>
+                </>
+              ) : isAnomaly ? (
+                <>
+                  <ThumbsDown className="w-3.5 h-3.5" />
+                  <span className="font-semibold">False Anomaly</span>
+                </>
+              ) : (
+                <>
+                  <ThumbsUp className="w-3.5 h-3.5" />
+                  <span className="font-semibold">Report Anomaly</span>
+                </>
+              )}
+            </span>
+          </button>
+          
+          {/* Replay Button */}
+          <button
+            onClick={onReplay}
+            className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-[#63d1eb]/10 hover:bg-[#63d1eb]/20 border border-[#224752] text-[#63d1eb] transition-all text-xs shrink-0"
+          >
+            <Play className="w-3.5 h-3.5" />
+            <span className="font-semibold">{t.replay}</span>
+          </button>
+          
+          {/* 3D View Button */}
           <button
             onClick={onOpen3D}
-            className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg transition-all text-xs shrink-0 ${
-              show3D 
-                ? 'bg-purple-500/30 border-purple-500/50 text-purple-300' 
-                : 'bg-purple-500/10 hover:bg-purple-500/20 border-purple-500/30 text-purple-400'
-            } border`}
+            className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-purple-500/10 hover:bg-purple-500/20 border border-purple-500/30 text-purple-400 transition-all text-xs shrink-0"
           >
             <Box className="w-3.5 h-3.5" />
-            <span className="font-semibold">3D</span>
+            <span className="font-semibold">3D View</span>
           </button>
-        )}
+        </div>
       </div>
-    </div>
+    </>
   );
 }

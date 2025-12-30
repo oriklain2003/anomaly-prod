@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { fetchStatsOverview, fetchLiveStatsOverview } from '../api';
+import { fetchStatsOverview } from '../api';
 import { DatePicker } from './DatePicker';
 import type { OverviewStats, StatFilter } from '../types';
 import type { CalculatedStats } from './DataStreamTable';
@@ -12,6 +12,7 @@ interface StatsCardProps {
   selectedFilter: StatFilter;
   onFilterSelect: (filter: StatFilter) => void;
   calculatedStats?: CalculatedStats | null; // Stats calculated from displayed reasons
+  totalFlightsCount?: number; // Total flights count for live mode (passed from DataStreamTable)
 }
 
 interface StatItem {
@@ -39,7 +40,7 @@ const MOCK_STATS: OverviewStats = {
   unplanned_landing: -1,
 };
 
-export function StatsCard({ mode, selectedDate, onDateChange, selectedFilter, onFilterSelect, calculatedStats }: StatsCardProps) {
+export function StatsCard({ mode, selectedDate, onDateChange, selectedFilter, onFilterSelect, calculatedStats, totalFlightsCount }: StatsCardProps) {
   const [stats, setStats] = useState<OverviewStats>(MOCK_STATS);
   const [loading, setLoading] = useState(true);
 
@@ -50,23 +51,26 @@ export function StatsCard({ mode, selectedDate, onDateChange, selectedFilter, on
       try {
         setLoading(true);
         
-        let rawData: OverviewStats;
-        
         if (mode === 'live') {
-          // Live mode: get stats from research_new.db (last 24 hours)
-          rawData = await fetchLiveStatsOverview();
-        } else {
-          // History mode: get stats from feedback_tagged.db for selected date
-          const startOfDay = new Date(selectedDate);
-          startOfDay.setHours(0, 0, 0, 0);
-          const endOfDay = new Date(selectedDate);
-          endOfDay.setHours(23, 59, 59, 999);
-          
-          const startTs = Math.floor(startOfDay.getTime() / 1000);
-          const endTs = Math.floor(endOfDay.getTime() / 1000);
-          
-          rawData = await fetchStatsOverview(startTs, endTs);
+          // Live mode: stats are calculated from fetched data, no API call needed
+          // Just mark as not loading - calculatedStats will be used
+          if (mounted) {
+            setStats(MOCK_STATS); // Reset stats, will use calculatedStats instead
+            setLoading(false);
+          }
+          return;
         }
+        
+        // History mode: get stats from feedback_tagged.db for selected date
+        const startOfDay = new Date(selectedDate);
+        startOfDay.setHours(0, 0, 0, 0);
+        const endOfDay = new Date(selectedDate);
+        endOfDay.setHours(23, 59, 59, 999);
+        
+        const startTs = Math.floor(startOfDay.getTime() / 1000);
+        const endTs = Math.floor(endOfDay.getTime() / 1000);
+        
+        const rawData = await fetchStatsOverview(startTs, endTs);
         
         const data: OverviewStats = {
           ...rawData,
@@ -96,7 +100,11 @@ export function StatsCard({ mode, selectedDate, onDateChange, selectedFilter, on
   }, [mode, selectedDate]);
 
   // Use client-side calculated stats (matches glow logic) when available
-  // Only use API stats for total_flights (since we can't count all flights client-side)
+  // For live mode: use totalFlightsCount from DataStreamTable (count of all fetched flights)
+  // For history mode: use API stats for total_flights
+  const displayFlights = mode === 'live' 
+    ? (totalFlightsCount ?? 0)
+    : stats.total_flights;
   const displayAnomalies = calculatedStats?.anomalies ?? stats.total_anomalies ?? 0;
   const displayEmergency = calculatedStats?.emergency ?? stats.emergency_codes ?? 0;
   const displayTraffic = calculatedStats?.traffic ?? (
@@ -109,7 +117,7 @@ export function StatsCard({ mode, selectedDate, onDateChange, selectedFilter, on
   const statItems: StatItem[] = [
     {
       label: 'Flights',
-      value: stats.total_flights, // Keep from API - represents all flights for the day
+      value: displayFlights, // Live mode: from fetched data, History mode: from API
       icon: 'flight',
       color: 'text-[#63d1eb]',
       bgColor: 'bg-[#63d1eb]/10',
@@ -165,13 +173,20 @@ export function StatsCard({ mode, selectedDate, onDateChange, selectedFilter, on
 
   return (
     <div className="px-6 py-4 border-b border-white/5 bg-black/20 backdrop-blur-sm">
-      {/* Date Picker Row */}
+      {/* Date Picker Row - only show in history mode */}
       <div className="flex items-center justify-between mb-3">
         <span className="text-xs font-medium text-gray-400 uppercase tracking-wider">Overview</span>
-        <DatePicker selectedDate={selectedDate} onDateChange={onDateChange} />
+        {mode === 'history' ? (
+          <DatePicker selectedDate={selectedDate} onDateChange={onDateChange} />
+        ) : (
+          <span className="text-[10px] font-mono text-[#00ffa3] flex items-center gap-1.5">
+            <span className="w-1.5 h-1.5 bg-[#00ffa3] rounded-full animate-pulse shadow-[0_0_8px_rgba(0,255,163,0.8)]" />
+            LIVE
+          </span>
+        )}
       </div>
       
-      {/* Stats Grid - smaller cards matching reference */}
+      {/* Stats Grid - balanced cards */}
       <div className="grid grid-cols-3 gap-2">
         {statItems.map((stat) => {
           const isSelected = selectedFilter === stat.filterKey;
@@ -180,34 +195,34 @@ export function StatsCard({ mode, selectedDate, onDateChange, selectedFilter, on
               key={stat.label}
               onClick={() => onFilterSelect(isSelected ? null : stat.filterKey)}
               className={clsx(
-                "overview-card rounded p-3 flex flex-col items-center justify-center h-[72px] group cursor-pointer transition-all duration-300",
-                isSelected && "ring-2 ring-offset-1 ring-offset-transparent scale-105",
-                isSelected && stat.filterKey === 'flights' && "ring-[#63d1eb] bg-[#63d1eb]/20",
-                isSelected && stat.filterKey === 'anomalies' && "ring-purple-400 bg-purple-500/20",
-                isSelected && stat.filterKey === 'emergency' && "ring-red-400 bg-red-500/20",
-                isSelected && stat.filterKey === 'traffic' && "ring-[#00ffa3] bg-[#00ffa3]/20",
-                isSelected && stat.filterKey === 'military' && "ring-yellow-400 bg-yellow-500/20",
-                isSelected && stat.filterKey === 'safety' && "ring-orange-400 bg-orange-500/20",
+                "overview-card rounded-lg p-2.5 flex flex-col items-center justify-center h-[64px] group cursor-pointer transition-all duration-300",
+                isSelected && "ring-1 ring-offset-1 ring-offset-transparent scale-[1.03]",
+                isSelected && stat.filterKey === 'flights' && "ring-[#63d1eb] bg-[#63d1eb]/15",
+                isSelected && stat.filterKey === 'anomalies' && "ring-purple-400 bg-purple-500/15",
+                isSelected && stat.filterKey === 'emergency' && "ring-red-400 bg-red-500/15",
+                isSelected && stat.filterKey === 'traffic' && "ring-[#00ffa3] bg-[#00ffa3]/15",
+                isSelected && stat.filterKey === 'military' && "ring-yellow-400 bg-yellow-500/15",
+                isSelected && stat.filterKey === 'safety' && "ring-orange-400 bg-orange-500/15",
                 !isSelected && "hover:bg-white/5"
               )}
             >
               {/* Icon */}
               <span 
-                className={`material-symbols-outlined text-lg mb-1 ${stat.color} transition-transform duration-300 ${isSelected ? 'scale-110' : ''}`} 
-                style={{ textShadow: isSelected ? `0 0 20px currentColor, 0 0 30px currentColor` : `0 0 15px currentColor` }}
+                className={`material-symbols-outlined text-base mb-0.5 ${stat.color} transition-transform duration-300 ${isSelected ? 'scale-110' : ''}`} 
+                style={{ textShadow: isSelected ? `0 0 10px currentColor` : `0 0 6px currentColor` }}
               >
                 {stat.icon}
               </span>
               {/* Value */}
               <span 
-                className={`text-xl font-mono font-bold ${stat.color}`} 
-                style={{ textShadow: isSelected ? `0 0 20px currentColor, 0 0 30px currentColor` : `0 0 15px currentColor` }}
+                className={`text-lg font-mono font-bold ${stat.color}`} 
+                style={{ textShadow: isSelected ? `0 0 10px currentColor` : `0 0 6px currentColor` }}
               >
                 {loading ? '—' : (stat.value == null ? '—' : stat.value.toLocaleString())}
               </span>
               {/* Label */}
               <span className={clsx(
-                "text-[10px] uppercase transition-colors duration-300",
+                "text-[9px] uppercase transition-colors duration-300",
                 isSelected ? "text-white font-semibold" : "text-gray-500"
               )}>{stat.label}</span>
             </div>

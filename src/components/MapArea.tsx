@@ -1,8 +1,9 @@
 import { useState } from 'react';
 import { MapComponent } from './MapComponent';
 import { MapControls, type MapLayer } from './MapControls';
-import { Plus, Minus, X } from 'lucide-react';
+import { Plus, Minus, X, ChevronRight, Info } from 'lucide-react';
 import type { SelectedFlight, HighlightState } from '../types';
+import clsx from 'clsx';
 
 interface MapAreaProps {
   selectedFlight: SelectedFlight | null;
@@ -16,6 +17,7 @@ export function MapArea({ selectedFlight, mode = 'history', onFlightClick, highl
   const [mouseCoords, setMouseCoords] = useState({ lat: 32.4412, lon: 35.8912, elv: 890 });
   const [activeLayers, setActiveLayers] = useState<MapLayer[]>(['track', 'anomalies']);
   const [showLayersDropdown, setShowLayersDropdown] = useState(false);
+  const [showExpandedInfo, setShowExpandedInfo] = useState(false);
 
   const toggleLayer = (layer: MapLayer) => {
     setActiveLayers(prev =>
@@ -90,62 +92,250 @@ export function MapArea({ selectedFlight, mode = 'history', onFlightClick, highl
       </div>
 
       {/* Compact Flight Info Card (Top Left) */}
-      {selectedFlight && (
-        <div className="absolute top-4 left-4 z-20">
-          <div className="liquid-glass rounded-lg p-4 w-64 text-xs shadow-[0_0_20px_rgba(99,209,235,0.4),0_0_40px_rgba(99,209,235,0.2)] border border-[#63d1eb]/30">
-            {/* Header */}
-            <div className="flex items-center gap-3 mb-3">
-              <div className="bg-[#63d1eb]/10 border border-[#63d1eb]/40 p-2 rounded-md text-[#63d1eb]">
-                <span className="material-symbols-outlined text-lg">flight</span>
-              </div>
-              <div>
-                <h2 className="text-lg font-bold text-white font-mono">
-                  {selectedFlight.callsign || selectedFlight.flight_id.slice(0, 7)}
-                </h2>
-                <div className="flex items-center gap-1.5 text-[10px] mt-0.5">
-                  <span className="bg-emerald-500/10 text-emerald-400 px-1.5 py-0.5 rounded border border-emerald-500/40">
-                    ACTIVE
-                  </span>
-                  <span className="text-gray-400">•</span>
-                  <span className="text-gray-300">B738</span>
+      {selectedFlight && (() => {
+        // Get altitude and speed from various sources
+        const altFt = selectedFlight.status?.altitude_ft 
+          || (selectedFlight.track?.points?.length ? selectedFlight.track.points[selectedFlight.track.points.length - 1]?.alt : null)
+          || selectedFlight.report?.full_report?.summary?.altitude;
+        const spdKts = selectedFlight.status?.speed_kts 
+          || (selectedFlight.track?.points?.length ? selectedFlight.track.points[selectedFlight.track.points.length - 1]?.gspeed : null)
+          || selectedFlight.report?.full_report?.summary?.speed;
+        const aircraftType = selectedFlight.report?.aircraft_type || selectedFlight.report?.full_report?.summary?.aircraft_type || '---';
+        const statusText = selectedFlight.status?.status || (mode === 'live' ? 'ACTIVE' : 'REPLAY');
+        
+        return (
+          <div className="absolute top-4 left-4 z-20">
+            <div className="liquid-glass rounded-lg p-4 w-64 text-xs shadow-[0_0_20px_rgba(99,209,235,0.4),0_0_40px_rgba(99,209,235,0.2)] border border-[#63d1eb]/30">
+              {/* Header */}
+              <div className="flex items-center gap-3 mb-3">
+                <div className="bg-[#63d1eb]/10 border border-[#63d1eb]/40 p-2 rounded-md text-[#63d1eb]">
+                  <span className="material-symbols-outlined text-lg">flight</span>
+                </div>
+                <div className="flex-1">
+                  <h2 className="text-lg font-bold text-white font-mono">
+                    {selectedFlight.callsign || selectedFlight.flight_id.slice(0, 7)}
+                  </h2>
+                  <div className="flex items-center gap-1.5 text-[10px] mt-0.5">
+                    <span className={clsx(
+                      "px-1.5 py-0.5 rounded border",
+                      statusText === 'ACTIVE' ? "bg-emerald-500/10 text-emerald-400 border-emerald-500/40" :
+                      statusText === 'REPLAY' ? "bg-purple-500/10 text-purple-400 border-purple-500/40" :
+                      "bg-gray-500/10 text-gray-400 border-gray-500/40"
+                    )}>
+                      {statusText}
+                    </span>
+                    <span className="text-gray-400">•</span>
+                    <span className="text-gray-300">{aircraftType}</span>
+                  </div>
                 </div>
               </div>
-            </div>
-            
-            {/* Origin / Destination */}
-            <div className="grid grid-cols-2 gap-3 border-t border-white/10 pt-3">
-              <div>
-                <p className="text-[9px] text-[#63d1eb]/70 font-mono uppercase tracking-wider">Origin</p>
-                <p className="text-sm font-bold text-white">{selectedFlight.origin || '---'}</p>
-                <p className="text-[10px] text-gray-400 truncate">
-                  {selectedFlight.origin === 'LLBG' ? 'Ben Gurion' : 
-                   selectedFlight.origin === 'LCPH' ? 'Paphos Intl' : 
-                   selectedFlight.origin === 'LCLK' ? 'Larnaca' : 'Unknown'}
-                </p>
+              
+              {/* Origin / Destination */}
+              <div className="grid grid-cols-2 gap-3 border-t border-white/10 pt-3">
+                <div>
+                  <p className="text-[9px] text-[#63d1eb]/70 font-mono uppercase tracking-wider">Origin</p>
+                  <p className="text-sm font-bold text-white">{selectedFlight.origin || '---'}</p>
+                </div>
+                <div className="text-right">
+                  <p className="text-[9px] text-[#63d1eb]/70 font-mono uppercase tracking-wider">Dest</p>
+                  <p className="text-sm font-bold text-white">{selectedFlight.destination || '---'}</p>
+                </div>
               </div>
-              <div className="text-right">
-                <p className="text-[9px] text-[#63d1eb]/70 font-mono uppercase tracking-wider">Dest</p>
-                <p className="text-sm font-bold text-white">{selectedFlight.destination || '---'}</p>
-                <p className="text-[10px] text-gray-400 truncate">
-                  {selectedFlight.destination === 'LLBG' ? 'Ben Gurion' : 
-                   selectedFlight.destination === 'LCPH' ? 'Paphos Intl' : 
-                   selectedFlight.destination === 'LCLK' ? 'Larnaca' : 'Unknown'}
-                </p>
+              
+              {/* Flight stats */}
+              <div className="mt-3 pt-2 border-t border-white/10 flex justify-between items-center text-[10px] font-mono text-gray-300">
+                <span>ALT: <span className="text-[#63d1eb]">
+                  {altFt != null ? `${altFt.toLocaleString()}ft` : '---'}
+                </span></span>
+                <span>SPD: <span className="text-yellow-400">
+                  {spdKts != null ? `${Math.round(spdKts)}kts` : '---'}
+                </span></span>
               </div>
-            </div>
-            
-            {/* Flight stats */}
-            <div className="mt-3 pt-2 border-t border-white/10 flex justify-between items-center text-[10px] font-mono text-gray-300">
-              <span>ALT: <span className="text-[#63d1eb]">
-                {selectedFlight.status?.altitude_ft?.toLocaleString() || '32,000'}ft
-              </span></span>
-              <span>SPD: <span className="text-[#63d1eb]">
-                {selectedFlight.status?.speed_kts || '445'}kts
-              </span></span>
+
+              {/* Expand Info Button */}
+              <button
+                onClick={() => setShowExpandedInfo(!showExpandedInfo)}
+                className="w-full mt-2 flex items-center justify-center gap-1.5 px-2.5 py-1.5 text-[10px] font-semibold text-[#63d1eb] bg-[#63d1eb]/10 hover:bg-[#63d1eb]/20 border border-[#63d1eb]/30 hover:border-[#63d1eb]/50 rounded transition-all"
+              >
+                <Info className="w-3 h-3" />
+                <span>Expand Info</span>
+                <ChevronRight className={clsx("w-3 h-3 transition-transform", showExpandedInfo && "rotate-90")} />
+              </button>
+
+              {/* Expanded Flight Info */}
+              {showExpandedInfo && (() => {
+                const points = selectedFlight.track?.points || [];
+                const report = selectedFlight.report;
+                const fullReport = report?.full_report;
+                const summary = fullReport?.summary;
+                
+                // Calculate values from track data
+                const firstSeen = points.length ? new Date(points[0].timestamp * 1000) : null;
+                const lastSeen = points.length ? new Date(points[points.length - 1].timestamp * 1000) : null;
+                const durationMs = firstSeen && lastSeen ? lastSeen.getTime() - firstSeen.getTime() : 0;
+                const durationMins = Math.round(durationMs / 60000);
+                const altitudes = points.map(p => p.alt).filter(a => a != null && a > 0);
+                const speeds = points.map(p => p.gspeed).filter((s): s is number => s != null && s > 0);
+                const maxAlt = altitudes.length ? Math.max(...altitudes) : null;
+                const avgAlt = altitudes.length ? Math.round(altitudes.reduce((a, b) => a + b, 0) / altitudes.length) : null;
+                const cruiseAlt = altitudes.length ? Math.round(altitudes.slice(Math.floor(altitudes.length * 0.3), Math.floor(altitudes.length * 0.7)).reduce((a, b, _, arr) => a + b / arr.length, 0) || avgAlt || 0) : null;
+                const minSpeed = speeds.length ? Math.min(...speeds) : null;
+                const maxSpeed = speeds.length ? Math.max(...speeds) : null;
+                
+                // Calculate total distance (haversine formula)
+                const calcDistance = (lat1: number, lon1: number, lat2: number, lon2: number) => {
+                  const R = 3440.065; // Nautical miles
+                  const dLat = (lat2 - lat1) * Math.PI / 180;
+                  const dLon = (lon2 - lon1) * Math.PI / 180;
+                  const a = Math.sin(dLat/2) * Math.sin(dLat/2) + Math.cos(lat1 * Math.PI / 180) * Math.cos(lat2 * Math.PI / 180) * Math.sin(dLon/2) * Math.sin(dLon/2);
+                  return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1-a));
+                };
+                let totalDistance = 0;
+                for (let i = 1; i < points.length; i++) {
+                  totalDistance += calcDistance(points[i-1].lat, points[i-1].lon, points[i].lat, points[i].lon);
+                }
+                
+                // Get squawk codes from track
+                const squawkCodes = [...new Set(points.map(p => p.squawk).filter((s): s is string => !!s && s !== '0000'))];
+                const emergencySquawks = squawkCodes.filter(s => ['7500', '7600', '7700'].includes(s));
+                
+                // Get flight number from multiple sources
+                const flightNumber = report?.flight_number || summary?.flight_number || selectedFlight.callsign || '---';
+                
+                // Get airline from multiple sources
+                const airline = report?.airline || summary?.airline || '---';
+                
+                // Get category from multiple sources
+                const category = summary?.category || '---';
+                
+                return (
+                  <div className="mt-3 pt-3 border-t border-white/10 space-y-3 animate-in slide-in-from-top-2 duration-200 max-h-[500px] overflow-y-auto no-scrollbar">
+                    {/* Flight Info */}
+                    <div>
+                      <h4 className="text-[9px] uppercase tracking-widest text-[#63d1eb] font-bold mb-1.5 flex items-center gap-1">
+                        <span className="material-symbols-outlined text-xs">info</span>
+                        Flight Info
+                      </h4>
+                      <div className="grid grid-cols-2 gap-x-3 gap-y-1.5 text-[10px]">
+                        <div className="flex justify-between">
+                          <span className="text-gray-500">Flight #:</span>
+                          <span className="text-white font-mono">{flightNumber}</span>
+                        </div>
+                        <div className="flex justify-between">
+                          <span className="text-gray-500">Type:</span>
+                          <span className="text-white font-mono">{aircraftType}</span>
+                        </div>
+                        <div className="flex justify-between">
+                          <span className="text-gray-500">Airline:</span>
+                          <span className="text-white font-mono">{airline}</span>
+                        </div>
+                        <div className="flex justify-between">
+                          <span className="text-gray-500">Category:</span>
+                          <span className="text-white font-mono">{category}</span>
+                        </div>
+                      </div>
+                    </div>
+
+                    {/* Time Info */}
+                    <div>
+                      <h4 className="text-[9px] uppercase tracking-widest text-yellow-400 font-bold mb-1.5 flex items-center gap-1">
+                        <span className="material-symbols-outlined text-xs">schedule</span>
+                        Time
+                      </h4>
+                      <div className="grid grid-cols-2 gap-x-3 gap-y-1.5 text-[10px]">
+                        <div className="flex justify-between">
+                          <span className="text-gray-500">First Seen:</span>
+                          <span className="text-white font-mono">
+                            {firstSeen ? firstSeen.toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' }) : '---'}
+                          </span>
+                        </div>
+                        <div className="flex justify-between">
+                          <span className="text-gray-500">Last Seen:</span>
+                          <span className="text-white font-mono">
+                            {lastSeen ? lastSeen.toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' }) : '---'}
+                          </span>
+                        </div>
+                        <div className="flex justify-between">
+                          <span className="text-gray-500">Duration:</span>
+                          <span className="text-white font-mono">{durationMins > 0 ? `${durationMins}min` : '---'}</span>
+                        </div>
+                        <div className="flex justify-between">
+                          <span className="text-gray-500">Sched Dep:</span>
+                          <span className="text-white font-mono">{summary?.scheduled_departure || '---'}</span>
+                        </div>
+                        <div className="flex justify-between col-span-2">
+                          <span className="text-gray-500">Sched Arr:</span>
+                          <span className="text-white font-mono">{summary?.scheduled_arrival || '---'}</span>
+                        </div>
+                      </div>
+                    </div>
+
+                    {/* Performance */}
+                    <div>
+                      <h4 className="text-[9px] uppercase tracking-widest text-green-400 font-bold mb-1.5 flex items-center gap-1">
+                        <span className="material-symbols-outlined text-xs">speed</span>
+                        Performance
+                      </h4>
+                      <div className="grid grid-cols-2 gap-x-3 gap-y-1.5 text-[10px]">
+                        <div className="flex justify-between">
+                          <span className="text-gray-500">Max Alt:</span>
+                          <span className="text-white font-mono">{maxAlt ? `${maxAlt.toLocaleString()}ft` : '---'}</span>
+                        </div>
+                        <div className="flex justify-between">
+                          <span className="text-gray-500">Avg Alt:</span>
+                          <span className="text-white font-mono">{avgAlt ? `${avgAlt.toLocaleString()}ft` : '---'}</span>
+                        </div>
+                        <div className="flex justify-between">
+                          <span className="text-gray-500">Cruise Alt:</span>
+                          <span className="text-white font-mono">{cruiseAlt ? `${cruiseAlt.toLocaleString()}ft` : '---'}</span>
+                        </div>
+                        <div className="flex justify-between">
+                          <span className="text-gray-500">Min Speed:</span>
+                          <span className="text-white font-mono">{minSpeed ? `${Math.round(minSpeed)}kts` : '---'}</span>
+                        </div>
+                        <div className="flex justify-between">
+                          <span className="text-gray-500">Max Speed:</span>
+                          <span className="text-white font-mono">{maxSpeed ? `${Math.round(maxSpeed)}kts` : '---'}</span>
+                        </div>
+                        <div className="flex justify-between">
+                          <span className="text-gray-500">Distance:</span>
+                          <span className="text-white font-mono">{totalDistance > 0 ? `${Math.round(totalDistance)}nm` : '---'}</span>
+                        </div>
+                      </div>
+                    </div>
+
+                    {/* Track Data */}
+                    <div>
+                      <h4 className="text-[9px] uppercase tracking-widest text-purple-400 font-bold mb-1.5 flex items-center gap-1">
+                        <span className="material-symbols-outlined text-xs">route</span>
+                        Track Data
+                      </h4>
+                      <div className="grid grid-cols-2 gap-x-3 gap-y-1.5 text-[10px]">
+                        <div className="flex justify-between">
+                          <span className="text-gray-500">Squawks:</span>
+                          <span className="text-white font-mono truncate max-w-[80px]" title={squawkCodes.join(', ')}>
+                            {squawkCodes.length > 0 ? squawkCodes.slice(0, 2).join(', ') : '---'}
+                          </span>
+                        </div>
+                        <div className="flex justify-between">
+                          <span className="text-gray-500">Emergency:</span>
+                          <span className={clsx("font-mono", emergencySquawks.length > 0 ? "text-red-400" : "text-white")}>
+                            {emergencySquawks.length > 0 ? emergencySquawks.join(', ') : 'None'}
+                          </span>
+                        </div>
+                        <div className="flex justify-between">
+                          <span className="text-gray-500">Total Pts:</span>
+                          <span className="text-white font-mono">{points.length}</span>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                );
+              })()}
             </div>
           </div>
-        </div>
-      )}
+        );
+      })()}
 
       {/* Bottom Info Bar - Coordinates (Left) */}
       <div className="absolute bottom-4 left-4 z-20">

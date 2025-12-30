@@ -151,12 +151,16 @@ const MODEL_CONFIG: Record<string, ModelConfig> = {
   'B738': {
     path: '/models/B738.glb',
     scale: 0.02,          // 737-800
-    rotationFix: 0,
+    rotationFix: -90,
+    offsetX: 10,
+    offsetY: 4,
   },
   'boeing_737': {
     path: '/models/boeing_737.glb',
-    scale: 0.02,          // Generic 737
-    rotationFix: 0,
+    scale: 0.2,          // Generic 737
+    rotationFix: 180,
+    offsetY: -2.2,
+    offsetZ: -1.42,
   },
   
   // === MILITARY AIRCRAFT ===
@@ -174,13 +178,17 @@ const MODEL_CONFIG: Record<string, ModelConfig> = {
   // === OTHER AIRCRAFT ===
   'Business_jet': {
     path: '/models/Business_jet.glb',
-    scale: 0.02,           // Business jets are smaller
+    scale: 0.001,           // Business jets are smaller
     rotationFix: 0,
+    offsetZ: -400,
+    offsetX: 400,
+    offsetY: 100,
   },
   'small': {
     path: '/models/small.glb',
     scale: 0.02,           // General aviation / small aircraft
     rotationFix: 0,
+    offsetY: 2,
   },
 };
 
@@ -1349,8 +1357,16 @@ export function Flight3DMapReplay({ flightId, onClose, highlight, onClearHighlig
   const [mapTextureUrl, setMapTextureUrl] = useState<string | null>(null);
   const [mapLoading, setMapLoading] = useState(true);
 
+  // Track if we've already loaded data for this flight
+  const loadedFlightIdRef = useRef<string | null>(null);
+
   // Fetch flight data - always fetch fresh complete data for accurate replay
   useEffect(() => {
+    // Skip if already loaded for this flightId
+    if (loadedFlightIdRef.current === flightId && flightData) {
+      return;
+    }
+    
     async function loadData() {
       try {
         setLoading(true);
@@ -1363,25 +1379,26 @@ export function Flight3DMapReplay({ flightId, onClose, highlight, onClearHighlig
         let trackData: FlightTrack | null = null;
         let source = '';
         
-        try {
-          trackData = await fetchFeedbackTrack(flightId);
-          source = 'feedback';
-          console.log(`[Flight3DMapReplay] Loaded ${flightId} from feedback track with ${trackData?.points?.length || 0} points`);
-        } catch (feedbackErr) {
-          console.warn(`[Flight3DMapReplay] Feedback track not found for ${flightId}, trying unified track...`);
+        // If pre-loaded trackPoints are provided, use them directly (for demo/test modes)
+        if (trackPoints && trackPoints.length > 0) {
+          console.log(`[Flight3DMapReplay] Using pre-loaded trackPoints (${trackPoints.length} points)`);
+          trackData = { points: trackPoints } as FlightTrack;
+          source = 'preloaded';
+        } else {
+          // Otherwise, fetch from API
           try {
-            // Unified track can fetch from FR24 if not in local databases
-            trackData = await fetchUnifiedTrack(flightId);
-            source = 'unified';
-            console.log(`[Flight3DMapReplay] Loaded ${flightId} from unified track with ${trackData?.points?.length || 0} points`);
-          } catch (unifiedErr) {
-            console.warn(`[Flight3DMapReplay] Unified track failed for ${flightId}:`, unifiedErr);
-            
-            // Last resort: use pre-loaded track points if available
-            if (trackPoints && trackPoints.length > 0) {
-              console.log(`[Flight3DMapReplay] Using pre-loaded trackPoints (${trackPoints.length} points)`);
-              trackData = { points: trackPoints } as FlightTrack;
-              source = 'preloaded';
+            trackData = await fetchFeedbackTrack(flightId);
+            source = 'feedback';
+            console.log(`[Flight3DMapReplay] Loaded ${flightId} from feedback track with ${trackData?.points?.length || 0} points`);
+          } catch (feedbackErr) {
+            console.warn(`[Flight3DMapReplay] Feedback track not found for ${flightId}, trying unified track...`);
+            try {
+              // Unified track can fetch from FR24 if not in local databases
+              trackData = await fetchUnifiedTrack(flightId);
+              source = 'unified';
+              console.log(`[Flight3DMapReplay] Loaded ${flightId} from unified track with ${trackData?.points?.length || 0} points`);
+            } catch (unifiedErr) {
+              console.warn(`[Flight3DMapReplay] Unified track failed for ${flightId}:`, unifiedErr);
             }
           }
         }
@@ -1394,6 +1411,9 @@ export function Flight3DMapReplay({ flightId, onClose, highlight, onClearHighlig
           const extractedCallsign = callsign || (trackData as any).callsign || sortedPoints[0]?.callsign;
           
           console.log(`[Flight3DMapReplay] Track loaded for ${flightId}: ${sortedPoints.length} points from ${source}`);
+          
+          // Mark as loaded before setting state
+          loadedFlightIdRef.current = flightId;
           
           setFlightData({
             id: flightId,
@@ -1478,26 +1498,45 @@ export function Flight3DMapReplay({ flightId, onClose, highlight, onClearHighlig
     loadSecondaryFlights();
   }, [secondaryFlightIds, flightId]);
 
+  // Track if map has been rendered for current flight
+  const mapRenderedForFlightRef = useRef<string | null>(null);
+  const isRenderingMapRef = useRef(false);
+
   // Calculate bounding box and render map when flight data is loaded
   useEffect(() => {
     if (!flightData || flightData.points.length === 0) return;
     
+    // Skip if already rendering or already rendered for this flight
+    if (isRenderingMapRef.current) {
+      return;
+    }
+    if (mapRenderedForFlightRef.current === flightData.id) {
+      return;
+    }
+    
+    // Mark as rendering immediately to prevent re-entry
+    isRenderingMapRef.current = true;
+    mapRenderedForFlightRef.current = flightData.id;
+    
     // Combine all flight points for bounding box calculation
     const allPoints = [...flightData.points, ...secondaryFlights.flatMap(f => f.points)];
     const calculatedBbox = calculateBoundingBox(allPoints);
-    setBbox(calculatedBbox);
     
-    // Render map using MapLibre
+    // Set bbox and start map loading
+    setBbox(calculatedBbox);
     setMapLoading(true);
+    
     renderMapLibreTexture(calculatedBbox).then(dataUrl => {
       if (dataUrl) {
         setMapTextureUrl(dataUrl);
       }
       setMapLoading(false);
+      isRenderingMapRef.current = false;
     }).catch(() => {
       setMapLoading(false);
+      isRenderingMapRef.current = false;
     });
-  }, [flightData, secondaryFlights]);
+  }, [flightData?.id]); // Only depend on flight ID - secondary flights handled separately
 
   // Handle highlight changes - jump to the highlighted segment or timestamp
   useEffect(() => {
@@ -1524,7 +1563,13 @@ export function Flight3DMapReplay({ flightId, onClose, highlight, onClearHighlig
       setCurrentPointIndex(closestIdx);
       setHighlightApplied(true);
     }
-  }, [flightData, highlight, highlightApplied]);
+  }, [flightData?.id, highlight, highlightApplied]); // Only depend on flight ID, not the whole object
+
+  // Store flight data length in a ref to avoid re-running effect when flightData object changes
+  const flightDataLengthRef = useRef(0);
+  if (flightData) {
+    flightDataLengthRef.current = flightData.points.length;
+  }
 
   // Playback animation
   useEffect(() => {
@@ -1532,7 +1577,7 @@ export function Flight3DMapReplay({ flightId, onClose, highlight, onClearHighlig
 
     const interval = setInterval(() => {
       setCurrentPointIndex(prev => {
-        if (prev >= flightData.points.length - 1) {
+        if (prev >= flightDataLengthRef.current - 1) {
           setIsPlaying(false);
           return prev;
         }
@@ -1541,7 +1586,7 @@ export function Flight3DMapReplay({ flightId, onClose, highlight, onClearHighlig
     }, 1000 / playbackSpeed);
 
     return () => clearInterval(interval);
-  }, [isPlaying, playbackSpeed, flightData]);
+  }, [isPlaying, playbackSpeed, flightData?.id]); // Only depend on flight ID
 
   // Keyboard controls
   useEffect(() => {
@@ -1570,6 +1615,15 @@ export function Flight3DMapReplay({ flightId, onClose, highlight, onClearHighlig
     return new Date(ts).toLocaleTimeString();
   };
 
+  // Memoize fallback bbox to prevent infinite re-renders
+  const effectiveBbox = useMemo(() => {
+    if (bbox) return bbox;
+    if (flightData?.points?.length) {
+      return calculateBoundingBox(flightData.points);
+    }
+    return null;
+  }, [bbox, flightData?.id]); // Only recalculate when bbox or flight ID changes
+
   if (loading || (flightData && mapLoading)) {
     return createPortal(
       <div className="fixed inset-0 z-[9999] bg-black flex items-center justify-center">
@@ -1584,7 +1638,7 @@ export function Flight3DMapReplay({ flightId, onClose, highlight, onClearHighlig
     );
   }
 
-  if (error || !flightData) {
+  if (error || !flightData || !effectiveBbox) {
     return createPortal(
       <div className="fixed inset-0 z-[9999] bg-black flex items-center justify-center">
         <div className="text-center">
@@ -1616,7 +1670,7 @@ export function Flight3DMapReplay({ flightId, onClose, highlight, onClearHighlig
           cameraMode={cameraMode}
           controlsRef={controlsRef}
           highlight={highlight}
-          bbox={bbox || calculateBoundingBox(flightData.points)}
+          bbox={effectiveBbox!}
           mapTextureUrl={mapTextureUrl}
         />
       </Canvas>

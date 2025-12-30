@@ -158,8 +158,36 @@ export function DatePicker({ selectedDate, onDateChange }: DatePickerProps) {
     return date > today;
   };
 
+  // Navigate to previous day
+  const handlePrevDay = () => {
+    const prevDay = new Date(selectedDate);
+    prevDay.setDate(prevDay.getDate() - 1);
+    handleSelectDate(prevDay);
+  };
+
+  // Navigate to next day (but not past today)
+  const handleNextDay = () => {
+    const nextDay = new Date(selectedDate);
+    nextDay.setDate(nextDay.getDate() + 1);
+    if (!isFuture(nextDay)) {
+      handleSelectDate(nextDay);
+    }
+  };
+
+  // Check if we can go to next day
+  const canGoNext = !isFuture(new Date(selectedDate.getTime() + 24 * 60 * 60 * 1000));
+
   return (
-    <div ref={containerRef} className="relative">
+    <div ref={containerRef} className="relative flex items-center gap-1">
+      {/* Previous Day Button */}
+      <button
+        onClick={handlePrevDay}
+        className="p-1 rounded hover:bg-white/10 transition-colors text-gray-500 hover:text-white"
+        title="Previous day"
+      >
+        <ChevronLeft className="w-4 h-4" />
+      </button>
+
       {/* Trigger Button */}
       <button
         ref={buttonRef}
@@ -169,6 +197,21 @@ export function DatePicker({ selectedDate, onDateChange }: DatePickerProps) {
         <Calendar className="w-3.5 h-3.5 text-gray-400" />
         <span className="text-gray-300 font-mono">{formatShortDate(selectedDate)}</span>
         <ChevronDown className={clsx("w-3 h-3 text-gray-500 transition-transform", isOpen && "rotate-180")} />
+      </button>
+
+      {/* Next Day Button */}
+      <button
+        onClick={handleNextDay}
+        disabled={!canGoNext}
+        className={clsx(
+          "p-1 rounded transition-colors",
+          canGoNext 
+            ? "hover:bg-white/10 text-gray-500 hover:text-white" 
+            : "text-gray-700 cursor-not-allowed"
+        )}
+        title={canGoNext ? "Next day" : "Cannot go past today"}
+      >
+        <ChevronRight className="w-4 h-4" />
       </button>
 
       {/* Dropdown - rendered via portal to escape overflow:hidden */}

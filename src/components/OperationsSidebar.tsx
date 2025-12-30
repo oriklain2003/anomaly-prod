@@ -138,6 +138,7 @@ export function OperationsSidebar({
           selectedFilter={highlightFilter}
           onFilterSelect={setHighlightFilter}
           calculatedStats={calculatedStats}
+          totalFlightsCount={calculatedStats?.totalFlights}
         />
       )}
 

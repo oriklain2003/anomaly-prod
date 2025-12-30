@@ -458,6 +458,18 @@ export function MapComponent({ onMouseMove: _onMouseMove, selectedFlight, active
         data: { type: 'FeatureCollection', features: [] },
       });
 
+      // Track points source (individual points along the track)
+      map.current.addSource('track-points', {
+        type: 'geojson',
+        data: { type: 'FeatureCollection', features: [] },
+      });
+
+      // Proximity event points source (red markers for proximity events)
+      map.current.addSource('proximity-event-points', {
+        type: 'geojson',
+        data: { type: 'FeatureCollection', features: [] },
+      });
+
       // Anomaly points source
       map.current.addSource('anomaly-points', {
         type: 'geojson',
@@ -541,22 +553,50 @@ export function MapComponent({ onMouseMove: _onMouseMove, selectedFlight, active
         paint: { 'line-color': '#ec4899', 'line-width': 2, 'line-opacity': 0.6, 'line-dasharray': [4, 4] },
       });
 
-      // Flight track glow layer
+      // Flight track glow layer (hidden - using points instead)
       map.current.addLayer({
         id: 'flight-track-glow',
         type: 'line',
         source: 'flight-track',
-        layout: { 'line-join': 'round', 'line-cap': 'round' },
+        layout: { 'line-join': 'round', 'line-cap': 'round', 'visibility': 'none' },
         paint: { 'line-color': '#06b6d4', 'line-width': 6, 'line-opacity': 0.3, 'line-blur': 2 },
       });
 
-      // Flight track line layer
+      // Flight track line layer (hidden - using points instead)
       map.current.addLayer({
         id: 'flight-track-line',
         type: 'line',
         source: 'flight-track',
-        layout: { 'line-join': 'round', 'line-cap': 'round' },
+        layout: { 'line-join': 'round', 'line-cap': 'round', 'visibility': 'none' },
         paint: { 'line-color': '#06b6d4', 'line-width': 2, 'line-opacity': 0.9 },
+      });
+
+      // Track points - main visualization (points instead of line)
+      // Proximity points are colored red, others are cyan
+      map.current.addLayer({
+        id: 'track-points-layer',
+        type: 'circle',
+        source: 'track-points',
+        paint: { 
+          'circle-radius': [
+            'case',
+            ['get', 'isProximity'], 5,  // Size for proximity points
+            4
+          ],
+          'circle-color': [
+            'case',
+            ['get', 'isProximity'], '#ef4444',  // Red for proximity points
+            '#06b6d4'  // Cyan for normal points
+          ],
+          'circle-opacity': 0.9, 
+          'circle-stroke-width': [
+            'case',
+            ['get', 'isProximity'], 2,
+            1.5
+          ],
+          'circle-stroke-color': '#ffffff',
+          'circle-stroke-opacity': 0.7
+        },
       });
 
       // Anomaly points - small red circles
@@ -628,6 +668,46 @@ export function MapComponent({ onMouseMove: _onMouseMove, selectedFlight, active
       });
 
       setIsMapReady(true);
+
+      // Track points hover popup
+      const trackPointPopup = new maplibregl.Popup({
+        closeButton: false,
+        closeOnClick: false,
+        className: 'track-point-popup',
+        offset: [0, -10],
+      });
+
+      map.current!.on('mouseenter', 'track-points-layer', (e) => {
+        if (!map.current || !e.features?.[0]) return;
+        map.current.getCanvas().style.cursor = 'pointer';
+        
+        const props = e.features[0].properties;
+        const coords = (e.features[0].geometry as GeoJSON.Point).coordinates.slice() as [number, number];
+        
+        const time = props.timestamp 
+          ? new Date(props.timestamp * 1000).toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit', second: '2-digit' })
+          : '--:--:--';
+        const alt = props.alt ? `${Number(props.alt).toLocaleString()}ft` : '---';
+        const speed = props.gspeed ? `${Math.round(props.gspeed)}kts` : '---';
+        const heading = props.heading ? `${Math.round(props.heading)}°` : '---';
+        
+        trackPointPopup.setLngLat(coords).setHTML(`
+          <div style="background: rgba(0,0,0,0.9); color: white; padding: 8px 12px; border-radius: 6px; font-size: 11px; font-family: monospace; border: 1px solid rgba(6,182,212,0.4); box-shadow: 0 0 15px rgba(6,182,212,0.3);">
+            <div style="color: #06b6d4; font-weight: bold; margin-bottom: 4px;">${time}</div>
+            <div style="display: grid; grid-template-columns: auto auto; gap: 2px 12px;">
+              <span style="color: #9ca3af;">ALT:</span><span style="color: #22d3ee;">${alt}</span>
+              <span style="color: #9ca3af;">SPD:</span><span style="color: #fbbf24;">${speed}</span>
+              <span style="color: #9ca3af;">HDG:</span><span style="color: #a78bfa;">${heading}</span>
+            </div>
+          </div>
+        `).addTo(map.current);
+      });
+
+      map.current!.on('mouseleave', 'track-points-layer', () => {
+        if (!map.current) return;
+        map.current.getCanvas().style.cursor = '';
+        trackPointPopup.remove();
+      });
     });
 
     // ... Unchanged event handlers (mousemove, click, etc) ...
@@ -866,6 +946,92 @@ export function MapComponent({ onMouseMove: _onMouseMove, selectedFlight, active
           .addTo(map.current!);
       }
 
+      // Get proximity event timestamps (events don't have lat/lon, only timestamp)
+      const proximityTimestamps: number[] = [];
+      if (selectedFlight?.report?.full_report) {
+        const matchedRules = selectedFlight.report.full_report.matched_rules || 
+                            selectedFlight.report.full_report.layer_1_rules?.report?.matched_rules || [];
+        
+        // Find the proximity rule - check multiple possible IDs and names
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        const proximityRule = matchedRules.find((r: any) => 
+          r.id === 4 || 
+          r.id === 3 || 
+          r.rule_id === 4 || 
+          r.rule_id === 3 ||
+          (r.name && r.name.toLowerCase().includes('proximity'))
+        ) as {
+          id?: number;
+          rule_id?: number;
+          name?: string;
+          details?: {
+            events?: { timestamp: number }[];
+          };
+          events?: { timestamp: number }[];
+        } | undefined;
+
+        if (proximityRule) {
+          // Try to get events from details.events or directly from events
+          const events = proximityRule?.details?.events || proximityRule?.events || [];
+          events.forEach(ev => {
+            if (ev.timestamp) {
+              proximityTimestamps.push(ev.timestamp);
+            }
+          });
+        }
+        
+        console.log('[MapComponent] Proximity timestamps found:', proximityTimestamps);
+      }
+
+      // Helper to check if a track point is near a proximity event (by timestamp)
+      const isNearProximityEvent = (timestamp: number): boolean => {
+        for (const proxTs of proximityTimestamps) {
+          // Check if within 60 seconds of a proximity event
+          if (Math.abs(timestamp - proxTs) <= 60) {
+            return true;
+          }
+        }
+        return false;
+      };
+      
+      // Debug: count proximity points
+      let proximityPointCount = 0;
+
+      // Track points for hover interaction (show time/altitude)
+      // Color red if near a proximity event (matched by timestamp)
+      const trackPointsSource = map.current.getSource('track-points') as maplibregl.GeoJSONSource;
+      if (trackPointsSource) {
+        const trackPointFeatures: GeoJSON.Feature[] = flightTrack.points.map((p, idx) => {
+          const isProximityPoint = proximityTimestamps.length > 0 && isNearProximityEvent(p.timestamp);
+          if (isProximityPoint) proximityPointCount++;
+          return {
+            type: 'Feature',
+            properties: {
+              idx,
+              timestamp: p.timestamp,
+              alt: p.alt,
+              gspeed: p.gspeed,
+              heading: p.heading,
+              squawk: p.squawk,
+              isProximity: isProximityPoint,
+            },
+            geometry: { type: 'Point', coordinates: [p.lon, p.lat] },
+          };
+        });
+        trackPointsSource.setData({ type: 'FeatureCollection', features: trackPointFeatures });
+        
+        // Debug log
+        if (proximityTimestamps.length > 0) {
+          console.log('[MapComponent] Proximity points marked:', proximityPointCount, 'out of', flightTrack.points.length);
+        }
+      }
+
+      // Clear proximity event points (no longer using big red markers)
+      const proximityEventSource = map.current.getSource('proximity-event-points') as maplibregl.GeoJSONSource;
+      if (proximityEventSource) {
+        proximityEventSource.setData({ type: 'FeatureCollection', features: [] });
+      }
+
       // Anomaly points from rule-based detections
       const anomalyFeatures: GeoJSON.Feature[] = [];
       if (selectedFlight?.report?.full_report) {
@@ -916,6 +1082,16 @@ export function MapComponent({ onMouseMove: _onMouseMove, selectedFlight, active
       anomalySource.setData({ type: 'FeatureCollection', features: [] });
       proximityTracksSource.setData({ type: 'FeatureCollection', features: [] });
       proximityEndSource.setData({ type: 'FeatureCollection', features: [] });
+      
+      // Also clear track points and proximity event points
+      const trackPointsSource = map.current.getSource('track-points') as maplibregl.GeoJSONSource;
+      if (trackPointsSource) {
+        trackPointsSource.setData({ type: 'FeatureCollection', features: [] });
+      }
+      const proximityEventSource = map.current.getSource('proximity-event-points') as maplibregl.GeoJSONSource;
+      if (proximityEventSource) {
+        proximityEventSource.setData({ type: 'FeatureCollection', features: [] });
+      }
     }
   }, [flightTrack, selectedFlight?.report, selectedFlight?.callsign, selectedFlight?.flight_id, proximityFlights, isMapReady, mode]);
 

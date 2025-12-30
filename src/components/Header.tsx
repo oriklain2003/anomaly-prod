@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { Settings, Bell, Box } from 'lucide-react';
+import { Settings, Bell } from 'lucide-react';
 import { Link, useLocation } from 'react-router-dom';
 import clsx from 'clsx';
 import { Flight3DDemo } from './Flight3DDemo';
@@ -65,15 +65,6 @@ export function Header() {
 
         {/* Action Buttons */}
         <div className="flex items-center gap-2">
-          {/* 3D Demo Button */}
-          <button 
-            onClick={() => setShow3DDemo(true)}
-            className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold text-cyan-400 bg-cyan-500/10 hover:bg-cyan-500/20 border border-cyan-500/30 hover:border-cyan-500/50 rounded-md transition-all shadow-[0_0_10px_rgba(6,182,212,0.1)] hover:shadow-[0_0_15px_rgba(6,182,212,0.3)]"
-            title="3D Flight Demo"
-          >
-            <Box className="w-4 h-4" />
-            3D Demo
-          </button>
 
           <button className="text-gray-500 hover:text-white hover:bg-white/10 p-2 rounded-md transition-colors border border-transparent hover:border-white/5">
             <Settings className="h-5 w-5" />

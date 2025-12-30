@@ -605,3 +605,13 @@ body {
 .live-flight-marker:hover .material-symbols-outlined {
   filter: brightness(1.2);
 }
+
+/* Loading Progress Animation for Feedback Button */
+@keyframes loadingProgress {
+  0% {
+    width: 0%;
+  }
+  100% {
+    width: 100%;
+  }
+}

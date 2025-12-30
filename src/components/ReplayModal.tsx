@@ -51,6 +51,7 @@ export function ReplayModal({ mainFlightId, secondaryFlightIds = [], events = []
   const [showTools, setShowTools] = useState(false);
   const [distanceTool, setDistanceTool] = useState(true);
   const [airportDistanceTool, setAirportDistanceTool] = useState(true);
+  const [showSquawk, setShowSquawk] = useState(false);
   const [show3DView, setShow3DView] = useState(false);
 
   const animationRef = useRef<number | undefined>(undefined);
@@ -345,12 +346,105 @@ export function ReplayModal({ mainFlightId, secondaryFlightIds = [], events = []
         map.current?.on('mouseenter', `layer-${flight.id}-pos`, showPopup);
         map.current?.on('mouseleave', `layer-${flight.id}-pos`, hidePopup);
       });
+
+      // Add proximity event markers in RED
+      const proximityEvents = events.filter(e => e.type === 'proximity' && e.lat && e.lon);
+      if (proximityEvents.length > 0) {
+        map.current!.addSource('source-proximity-events', {
+          type: 'geojson',
+          data: {
+            type: 'FeatureCollection',
+            features: proximityEvents.map((e, idx) => ({
+              type: 'Feature' as const,
+              properties: {
+                description: e.description,
+                timestamp: e.timestamp,
+                idx: idx
+              },
+              geometry: {
+                type: 'Point' as const,
+                coordinates: [e.lon!, e.lat!]
+              }
+            }))
+          }
+        });
+
+        // Red pulsing circle for proximity events
+        map.current!.addLayer({
+          id: 'layer-proximity-events',
+          type: 'circle',
+          source: 'source-proximity-events',
+          paint: {
+            'circle-radius': 12,
+            'circle-color': '#ef4444',
+            'circle-opacity': 0.6,
+            'circle-stroke-width': 3,
+            'circle-stroke-color': '#fff',
+            'circle-stroke-opacity': 0.9
+          }
+        });
+
+        // Inner red circle
+        map.current!.addLayer({
+          id: 'layer-proximity-events-inner',
+          type: 'circle',
+          source: 'source-proximity-events',
+          paint: {
+            'circle-radius': 6,
+            'circle-color': '#dc2626',
+            'circle-opacity': 1
+          }
+        });
+
+        // Proximity event popup on hover
+        const showProximityPopup = (e: maplibregl.MapMouseEvent & { features?: maplibregl.MapGeoJSONFeature[] }) => {
+          if (!map.current || !popupRef.current || !e.features?.[0]) return;
+          map.current.getCanvas().style.cursor = 'pointer';
+
+          const feature = e.features[0];
+          const props = feature.properties || {};
+          const coords = (feature.geometry as GeoJSON.Point).coordinates.slice() as [number, number];
+
+          const timeStr = new Date(props.timestamp * 1000).toLocaleTimeString('en-GB', { 
+            hour: '2-digit', 
+            minute: '2-digit', 
+            second: '2-digit' 
+          });
+          
+          popupRef.current
+            .setLngLat(coords)
+            .setHTML(`
+              <div style="color: #1f2937; padding: 8px; font-size: 11px; font-family: system-ui; min-width: 150px;">
+                <div style="font-weight: bold; color: #dc2626; border-bottom: 1px solid #e5e7eb; padding-bottom: 4px; margin-bottom: 4px;">
+                  ⚠️ PROXIMITY ALERT
+                </div>
+                <div style="margin-bottom: 4px;">
+                  <span style="color: #6b7280;">Time:</span>
+                  <span style="font-family: monospace; float: right;">${timeStr}</span>
+                </div>
+                <div style="font-size: 10px; color: #374151; line-height: 1.3;">
+                  ${props.description || 'Proximity event'}
+                </div>
+              </div>
+            `)
+            .addTo(map.current);
+        };
+
+        const hideProximityPopup = () => {
+          if (!map.current || !popupRef.current) return;
+          map.current.getCanvas().style.cursor = '';
+          popupRef.current.remove();
+        };
+
+        map.current?.on('mouseenter', 'layer-proximity-events', showProximityPopup);
+        map.current?.on('mouseleave', 'layer-proximity-events', hideProximityPopup);
+      }
     });
 
     return () => {
       map.current?.remove();
     };
-  }, [loading, flights]);
+  }, [loading, flights, events]);
 
   // Animation Loop
   useEffect(() => {
@@ -614,6 +708,13 @@ export function ReplayModal({ mainFlightId, secondaryFlightIds = [], events = []
                   <span>Nearest Airport</span>
                   {airportDistanceTool && <Check className="w-4 h-4 text-primary" />}
                 </button>
+                <button 
+                  onClick={() => setShowSquawk(!showSquawk)}
+                  className="w-full flex items-center justify-between p-2 rounded hover:bg-white/5 text-sm text-white transition-colors"
+                >
+                  <span>Show Squawk</span>
+                  {showSquawk && <Check className="w-4 h-4 text-primary" />}
+                </button>
               </div>
             )}
           </div>
@@ -711,6 +812,13 @@ export function ReplayModal({ mainFlightId, secondaryFlightIds = [], events = []
                           <span>Speed:</span>
                           <span className="font-mono">{tel.gspeed || 0} kts</span>
                         </div>
+
+                        {showSquawk && (
+                          <div className="flex justify-between">
+                            <span>Squawk:</span>
+                            <span className="font-mono text-yellow-400">1200</span>
+                          </div>
+                        )}
 
                         {distances.length > 0 && (
                           <div className="mt-2 pt-2 border-t border-white/10">

@@ -8,8 +8,10 @@ export interface TrackPoint {
   gspeed?: number;
   vspeed?: number;  // Vertical speed in ft/min (positive = climbing, negative = descending)
   track?: number;
+  heading?: number;
   flight_id?: string;
   callsign?: string;
+  squawk?: string;
 }
 
 export interface FlightTrack {

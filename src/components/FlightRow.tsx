@@ -1,7 +1,7 @@
 import { useState, useMemo, useEffect } from 'react';
 import clsx from 'clsx';
-import { ChevronDown, ExternalLink, Plane } from 'lucide-react';
-import type { AnomalyReport, FlightPhase, StatFilter } from '../types';
+import { ChevronDown, ExternalLink, Plane, Info, ChevronRight } from 'lucide-react';
+import type { AnomalyReport, FlightPhase, StatFilter, FlightTrack, FlightMetadata } from '../types';
 import { getAnomalyReason, getAnomalyReasons, getScoreColor, formatTime } from '../utils/reason';
 
 interface FlightRowProps {
@@ -14,6 +14,8 @@ interface FlightRowProps {
   speed?: number;
   heading?: number;
   highlightFilter?: StatFilter;
+  track?: FlightTrack;
+  metadata?: FlightMetadata;
 }
 
 // Traffic-related displayed reasons
@@ -24,6 +26,8 @@ const EMERGENCY_REASONS = ['Emergency Squawks', 'Crash'];
 const SAFETY_REASONS = ['Proximity Alert'];
 // Military-related displayed reasons
 const MILITARY_REASONS = ['Military Flight', 'Operational Military'];
+// Known civilian airline callsign prefixes (should NOT be classified as military)
+const CIVILIAN_AIRLINE_PREFIXES = ['ELY', 'LY', 'UAE', 'EK', 'THY', 'TK', 'RJA', 'RJ', 'ETH', 'ET', 'SAS', 'SK', 'KLM', 'AF', 'BAW', 'BA', 'DLH', 'LH', 'SWR', 'LX', 'AAL', 'AA', 'UAL', 'UA', 'DAL', 'DL'];
 
 // Medium priority callsign prefixes (noisy flights that should show yellow instead of red)
 const MEDIUM_PRIORITY_PREFIXES = ['4X', 'SHAHD', 'APX', 'RAAD', 'JYRJ', '0000000', 'HERC'];
@@ -56,14 +60,20 @@ function matchesFilter(report: AnomalyReport, filter: StatFilter): boolean {
       return displayedReasons.some(reason => 
         TRAFFIC_REASONS.some(tr => reason.includes(tr))
       );
-    case 'military':
+    case 'military': {
+      const upperCallsign = report.callsign?.toUpperCase() || '';
+      // Exclude known civilian airlines from military classification
+      const isCivilianAirline = CIVILIAN_AIRLINE_PREFIXES.some(prefix => upperCallsign.startsWith(prefix));
+      if (isCivilianAirline) return false;
+      
       return displayedReasons.some(reason => 
         MILITARY_REASONS.some(mr => reason.includes(mr))
       ) || 
         // Also check callsign for military aircraft
-        (report.callsign?.toUpperCase().startsWith('RCH') ?? false) ||
-        (report.callsign?.toUpperCase().startsWith('CNV') ?? false) ||
-        (report.callsign?.toUpperCase().startsWith('IAF') ?? false);
+        upperCallsign.startsWith('RCH') ||
+        upperCallsign.startsWith('CNV') ||
+        upperCallsign.startsWith('IAF');
+    }
     case 'safety':
       return displayedReasons.some(reason => 
         SAFETY_REASONS.some(sr => reason.includes(sr))
@@ -83,8 +93,11 @@ export function FlightRow({
   speed,
   heading,
   highlightFilter,
+  track,
+  metadata,
 }: FlightRowProps) {
   const [isExpanded, setIsExpanded] = useState(false);
+  const [showDetailedInfo, setShowDetailedInfo] = useState(false);
   
   // Check if this flight should be highlighted based on the filter
   const isHighlighted = matchesFilter(report, highlightFilter ?? null);
@@ -327,6 +340,164 @@ export function FlightRow({
                   <span className="text-purple-400 font-mono">{heading}°</span>
                 </div>
               )}
+            </div>
+          )}
+
+          {/* Expand Info Button */}
+          <button
+            onClick={(e) => {
+              e.stopPropagation();
+              setShowDetailedInfo(!showDetailedInfo);
+            }}
+            className="flex items-center gap-1.5 px-2.5 py-1.5 text-[10px] font-semibold text-[#63d1eb] bg-[#63d1eb]/10 hover:bg-[#63d1eb]/20 border border-[#63d1eb]/30 hover:border-[#63d1eb]/50 rounded transition-all duration-300 mb-3"
+          >
+            <Info className="w-3 h-3" />
+            <span>Expand Info</span>
+            <ChevronRight className={clsx("w-3 h-3 transition-transform", showDetailedInfo && "rotate-90")} />
+          </button>
+
+          {/* Detailed Flight Info Panel */}
+          {showDetailedInfo && (
+            <div className="border border-white/10 rounded-lg bg-black/30 p-3 mb-3 animate-in slide-in-from-top-2 duration-200 space-y-4">
+              {/* Raw Info Section */}
+              <div>
+                <h4 className="text-[9px] uppercase tracking-widest text-[#63d1eb] font-bold mb-2 flex items-center gap-1.5">
+                  <span className="material-symbols-outlined text-xs">info</span>
+                  Flight Info
+                </h4>
+                <div className="grid grid-cols-2 gap-x-4 gap-y-1.5 text-xs">
+                  <div className="flex justify-between">
+                    <span className="text-gray-500">Flight Number:</span>
+                    <span className="text-white font-mono">{report.flight_number || callsign || '---'}</span>
+                  </div>
+                  <div className="flex justify-between">
+                    <span className="text-gray-500">Aircraft Type:</span>
+                    <span className="text-white font-mono">{report.aircraft_type || metadata?.aircraft_type || '---'}</span>
+                  </div>
+                  <div className="flex justify-between">
+                    <span className="text-gray-500">Airline:</span>
+                    <span className="text-white font-mono">{report.airline || metadata?.airline || '---'}</span>
+                  </div>
+                  <div className="flex justify-between">
+                    <span className="text-gray-500">Origin:</span>
+                    <span className="text-white font-mono">{origin || '---'}</span>
+                  </div>
+                  <div className="flex justify-between">
+                    <span className="text-gray-500">Destination:</span>
+                    <span className="text-white font-mono">{destination || '---'}</span>
+                  </div>
+                  <div className="flex justify-between">
+                    <span className="text-gray-500">Category:</span>
+                    <span className="text-white font-mono">{metadata?.category || '---'}</span>
+                  </div>
+                </div>
+              </div>
+
+              {/* Time Section */}
+              <div>
+                <h4 className="text-[9px] uppercase tracking-widest text-yellow-400 font-bold mb-2 flex items-center gap-1.5">
+                  <span className="material-symbols-outlined text-xs">schedule</span>
+                  Time
+                </h4>
+                <div className="grid grid-cols-2 gap-x-4 gap-y-1.5 text-xs">
+                  <div className="flex justify-between">
+                    <span className="text-gray-500">First Seen:</span>
+                    <span className="text-white font-mono">
+                      {metadata?.first_seen_ts 
+                        ? new Date(metadata.first_seen_ts * 1000).toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' })
+                        : track?.points?.[0]?.timestamp 
+                          ? new Date(track.points[0].timestamp * 1000).toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' })
+                          : '---'}
+                    </span>
+                  </div>
+                  <div className="flex justify-between">
+                    <span className="text-gray-500">Last Seen:</span>
+                    <span className="text-white font-mono">
+                      {metadata?.last_seen_ts 
+                        ? new Date(metadata.last_seen_ts * 1000).toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' })
+                        : track?.points?.[track.points.length - 1]?.timestamp 
+                          ? new Date(track.points[track.points.length - 1].timestamp * 1000).toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' })
+                          : '---'}
+                    </span>
+                  </div>
+                  <div className="flex justify-between">
+                    <span className="text-gray-500">Duration:</span>
+                    <span className="text-white font-mono">
+                      {metadata?.flight_duration_sec 
+                        ? `${Math.floor(metadata.flight_duration_sec / 60)} min`
+                        : track?.points?.length && track.points.length > 1
+                          ? `${Math.floor((track.points[track.points.length - 1].timestamp - track.points[0].timestamp) / 60)} min`
+                          : '---'}
+                    </span>
+                  </div>
+                </div>
+              </div>
+
+              {/* Performance Section */}
+              <div>
+                <h4 className="text-[9px] uppercase tracking-widest text-green-400 font-bold mb-2 flex items-center gap-1.5">
+                  <span className="material-symbols-outlined text-xs">speed</span>
+                  Performance
+                </h4>
+                <div className="grid grid-cols-2 gap-x-4 gap-y-1.5 text-xs">
+                  <div className="flex justify-between">
+                    <span className="text-gray-500">Max Altitude:</span>
+                    <span className="text-white font-mono">
+                      {metadata?.max_altitude_ft?.toLocaleString() || (track?.points?.length 
+                        ? Math.max(...track.points.map(p => p.alt)).toLocaleString() 
+                        : '---')} ft
+                    </span>
+                  </div>
+                  <div className="flex justify-between">
+                    <span className="text-gray-500">Avg Altitude:</span>
+                    <span className="text-white font-mono">
+                      {metadata?.avg_altitude_ft?.toLocaleString() || (track?.points?.length 
+                        ? Math.round(track.points.reduce((a, b) => a + b.alt, 0) / track.points.length).toLocaleString() 
+                        : '---')} ft
+                    </span>
+                  </div>
+                  <div className="flex justify-between">
+                    <span className="text-gray-500">Min Altitude:</span>
+                    <span className="text-white font-mono">
+                      {metadata?.min_altitude_ft?.toLocaleString() || (track?.points?.length 
+                        ? Math.min(...track.points.filter(p => p.alt > 0).map(p => p.alt)).toLocaleString() 
+                        : '---')} ft
+                    </span>
+                  </div>
+                  <div className="flex justify-between">
+                    <span className="text-gray-500">Avg Speed:</span>
+                    <span className="text-white font-mono">
+                      {metadata?.avg_speed_kts || (track?.points?.length 
+                        ? Math.round(track.points.filter(p => p.gspeed).reduce((a, b) => a + (b.gspeed || 0), 0) / track.points.filter(p => p.gspeed).length) 
+                        : '---')} kts
+                    </span>
+                  </div>
+                  <div className="flex justify-between">
+                    <span className="text-gray-500">Total Distance:</span>
+                    <span className="text-white font-mono">
+                      {metadata?.total_distance_nm?.toFixed(1) || '---'} nm
+                    </span>
+                  </div>
+                </div>
+              </div>
+
+              {/* Track Data Section */}
+              <div>
+                <h4 className="text-[9px] uppercase tracking-widest text-purple-400 font-bold mb-2 flex items-center gap-1.5">
+                  <span className="material-symbols-outlined text-xs">timeline</span>
+                  Track Data
+                </h4>
+                <div className="grid grid-cols-2 gap-x-4 gap-y-1.5 text-xs">
+                  <div className="flex justify-between">
+                    <span className="text-gray-500">Total Points:</span>
+                    <span className="text-white font-mono">{track?.points?.length || '---'}</span>
+                  </div>
+                  <div className="flex justify-between">
+                    <span className="text-gray-500">Signal Loss:</span>
+                    <span className="text-white font-mono">{metadata?.signal_loss_events || '---'}</span>
+                  </div>
+                </div>
+              </div>
             </div>
           )}
 
