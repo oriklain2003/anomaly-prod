@@ -1,9 +1,30 @@
-import { useState } from 'react';
+import { useState, useMemo, useEffect } from 'react';
 import { MapComponent } from './MapComponent';
 import { MapControls, type MapLayer } from './MapControls';
-import { Plus, Minus, X, ChevronRight, Info } from 'lucide-react';
-import type { SelectedFlight, HighlightState } from '../types';
+import { Plus, Minus, X, ChevronRight, Info, AlertTriangle, Loader2 } from 'lucide-react';
+import type { SelectedFlight, HighlightState, TrackPoint, FlightMetadata } from '../types';
+import { fetchReplayOtherFlight } from '../api';
 import clsx from 'clsx';
+
+// Extract proximity flight info from selected flight report
+interface ProximityFlightInfo {
+  other_flight_id: string;
+  other_callsign?: string;
+  distance_nm?: number;
+  altitude_diff_ft?: number;
+  timestamp?: number;
+  lat?: number;
+  lon?: number;
+}
+
+// Full data for the other flight (fetched from API)
+interface OtherFlightData {
+  flight_id: string;
+  callsign: string | null;
+  points: TrackPoint[];
+  metadata: FlightMetadata | null;
+  source: string;
+}
 
 interface MapAreaProps {
   selectedFlight: SelectedFlight | null;
@@ -18,6 +39,111 @@ export function MapArea({ selectedFlight, mode = 'history', onFlightClick, highl
   const [activeLayers, setActiveLayers] = useState<MapLayer[]>(['track', 'anomalies']);
   const [showLayersDropdown, setShowLayersDropdown] = useState(false);
   const [showExpandedInfo, setShowExpandedInfo] = useState(false);
+  const [showProximityExpandedInfo, setShowProximityExpandedInfo] = useState(false);
+  const [otherFlightData, setOtherFlightData] = useState<OtherFlightData | null>(null);
+  const [otherFlightLoading, setOtherFlightLoading] = useState(false);
+
+  // Extract proximity flight info from selected flight's report
+  const proximityFlight = useMemo((): ProximityFlightInfo | null => {
+    if (!selectedFlight?.report?.full_report) return null;
+    
+    const fullReport = selectedFlight.report.full_report;
+    
+    // Check multiple locations for matched rules
+    const possibleRuleSources = [
+      fullReport.matched_rules,
+      fullReport.layer_1_rules?.report?.matched_rules,
+      (fullReport as Record<string, unknown>).rules && 
+        ((fullReport as Record<string, unknown>).rules as { matched_rules?: unknown[] })?.matched_rules,
+    ];
+    
+    for (const rules of possibleRuleSources) {
+      if (!Array.isArray(rules)) continue;
+      
+      for (const rule of rules) {
+        // Proximity rule can be id 4 or name contains "proximity"
+        const isProximityRule = rule.id === 4 || rule.name?.toLowerCase().includes('proximity');
+        
+        if (isProximityRule) {
+          console.log('[MapArea] Found proximity rule:', rule);
+          
+          if (rule.details?.events?.length > 0) {
+            // Find the event with the lowest altitude difference (closest vertical separation)
+            const events = rule.details.events as Array<{
+              other_flight?: string;
+              other_flight_id?: string;
+              other_callsign?: string;
+              distance_nm?: number;
+              altitude_diff_ft?: number;
+              timestamp?: number;
+              lat?: number;
+              lon?: number;
+            }>;
+            
+            // Sort by absolute altitude difference and pick the closest one
+            const sortedEvents = [...events]
+              .filter(ev => {
+                const otherId = ev.other_flight || ev.other_flight_id;
+                return otherId && otherId !== selectedFlight.flight_id && otherId !== 'UNKNOWN';
+              })
+              .sort((a, b) => {
+                const altDiffA = Math.abs(a.altitude_diff_ft || Infinity);
+                const altDiffB = Math.abs(b.altitude_diff_ft || Infinity);
+                return altDiffA - altDiffB;
+              });
+            
+            if (sortedEvents.length > 0) {
+              const ev = sortedEvents[0]; // Get the event with lowest altitude difference
+              const otherId = ev.other_flight || ev.other_flight_id;
+              
+              console.log('[MapArea] Selected closest proximity event (lowest alt diff):', ev);
+              
+              return {
+                other_flight_id: otherId!,
+                other_callsign: ev.other_callsign,
+                distance_nm: ev.distance_nm,
+                altitude_diff_ft: ev.altitude_diff_ft,
+                timestamp: ev.timestamp,
+                lat: ev.lat,
+                lon: ev.lon,
+              };
+            }
+          }
+        }
+      }
+    }
+    
+    return null;
+  }, [selectedFlight]);
+
+  // Fetch full data for the other flight when proximity is detected
+  useEffect(() => {
+    if (!proximityFlight?.other_flight_id) {
+      setOtherFlightData(null);
+      setShowProximityExpandedInfo(false);
+      return;
+    }
+
+    const fetchOtherFlight = async () => {
+      setOtherFlightLoading(true);
+      try {
+        const data = await fetchReplayOtherFlight(proximityFlight.other_flight_id);
+        setOtherFlightData({
+          flight_id: data.flight_id,
+          callsign: data.callsign,
+          points: data.points,
+          metadata: data.metadata,
+          source: data.source,
+        });
+      } catch (err) {
+        setOtherFlightData(null);
+      } finally {
+        setOtherFlightLoading(false);
+      }
+    };
+
+    fetchOtherFlight();
+  }, [proximityFlight?.other_flight_id]);
 
   const toggleLayer = (layer: MapLayer) => {
     setActiveLayers(prev =>
@@ -101,6 +227,7 @@ export function MapArea({ selectedFlight, mode = 'history', onFlightClick, highl
           || (selectedFlight.track?.points?.length ? selectedFlight.track.points[selectedFlight.track.points.length - 1]?.gspeed : null)
           || selectedFlight.report?.full_report?.summary?.speed;
         const aircraftType = selectedFlight.report?.aircraft_type || selectedFlight.report?.full_report?.summary?.aircraft_type || '---';
+        console.log(selectedFlight);
         const statusText = selectedFlight.status?.status || (mode === 'live' ? 'ACTIVE' : 'REPLAY');
         
         return (
@@ -195,138 +322,332 @@ export function MapArea({ selectedFlight, mode = 'history', onFlightClick, highl
                   totalDistance += calcDistance(points[i-1].lat, points[i-1].lon, points[i].lat, points[i].lon);
                 }
                 
-                // Get squawk codes from track
-                const squawkCodes = [...new Set(points.map(p => p.squawk).filter((s): s is string => !!s && s !== '0000'))];
+                // Get squawk codes - prefer from report metadata, fallback to track
+                const reportSquawks = report?.squawk_codes?.split(',').filter(s => s && s !== '0000') || [];
+                const trackSquawks = [...new Set(points.map(p => p.squawk).filter((s): s is string => !!s && s !== '0000'))];
+                const squawkCodes = reportSquawks.length > 0 ? reportSquawks : trackSquawks;
                 const emergencySquawks = squawkCodes.filter(s => ['7500', '7600', '7700'].includes(s));
+                const hasEmergency = report?.emergency_squawk_detected || emergencySquawks.length > 0;
                 
-                // Get flight number from multiple sources
+                // Get flight number from multiple sources (report top-level > summary > callsign)
                 const flightNumber = report?.flight_number || summary?.flight_number || selectedFlight.callsign || '---';
                 
-                // Get airline from multiple sources
+                // Get airline from multiple sources (report top-level > summary)
                 const airline = report?.airline || summary?.airline || '---';
                 
-                // Get category from multiple sources
-                const category = summary?.category || '---';
+                // Get category from multiple sources (report top-level > summary)
+                const category = report?.category || summary?.category || '---';
+                
+                // Get aircraft registration (report top-level > summary)
+                const registration = report?.aircraft_registration || summary?.aircraft_registration || '---';
+                
+                // Get is_military flag (report top-level > summary)
+                const isMilitary = report?.is_military || summary?.is_military || false;
+                
+                // Use pre-computed values from metadata (report top-level > summary > calculated)
+                const metaMaxAlt = report?.max_altitude_ft || summary?.max_altitude_ft;
+                const metaAvgAlt = report?.avg_altitude_ft || summary?.avg_altitude_ft;
+                // Note: min_altitude_ft available as report?.min_altitude_ft if needed
+                const metaTotalDistance = report?.total_distance_nm || summary?.total_distance_nm;
+                const metaAvgSpeed = report?.avg_speed_kts || summary?.avg_speed_kts;
+                const metaMaxSpeed = report?.max_speed_kts || summary?.max_speed_kts;
+                const metaMinSpeed = report?.min_speed_kts || summary?.min_speed_kts;
+                const schedDep = report?.scheduled_departure || summary?.scheduled_departure;
+                const schedArr = report?.scheduled_arrival || summary?.scheduled_arrival;
                 
                 return (
-                  <div className="mt-3 pt-3 border-t border-white/10 space-y-3 animate-in slide-in-from-top-2 duration-200 max-h-[500px] overflow-y-auto no-scrollbar">
-                    {/* Flight Info */}
-                    <div>
-                      <h4 className="text-[9px] uppercase tracking-widest text-[#63d1eb] font-bold mb-1.5 flex items-center gap-1">
-                        <span className="material-symbols-outlined text-xs">info</span>
+                  <div className="mt-3 pt-3 border-t border-white/10 animate-in slide-in-from-top-2 duration-200 max-h-[500px] overflow-y-auto no-scrollbar">
+                    {/* Flight Info Section */}
+                    <div className="mb-3">
+                      <h4 className="text-[9px] uppercase tracking-widest text-[#63d1eb] font-semibold mb-2 flex items-center gap-1.5">
+                        <span className="material-symbols-outlined text-[11px]">info</span>
                         Flight Info
                       </h4>
-                      <div className="grid grid-cols-2 gap-x-3 gap-y-1.5 text-[10px]">
-                        <div className="flex justify-between">
+                      <div className="space-y-1 text-[10px]">
+                        <div className="flex items-center justify-between">
                           <span className="text-gray-500">Flight #:</span>
                           <span className="text-white font-mono">{flightNumber}</span>
                         </div>
-                        <div className="flex justify-between">
-                          <span className="text-gray-500">Type:</span>
-                          <span className="text-white font-mono">{aircraftType}</span>
-                        </div>
-                        <div className="flex justify-between">
+                        <div className="flex items-center justify-between">
                           <span className="text-gray-500">Airline:</span>
                           <span className="text-white font-mono">{airline}</span>
                         </div>
-                        <div className="flex justify-between">
+                        <div className="flex items-center justify-between">
                           <span className="text-gray-500">Category:</span>
-                          <span className="text-white font-mono">{category}</span>
+                          <span className={clsx("font-mono", isMilitary ? "text-orange-400" : "text-white")}>
+                            {isMilitary ? 'Military' : category}
+                          </span>
+                        </div>
+                        <div className="flex items-center justify-between">
+                          <span className="text-gray-500">Registration:</span>
+                          <span className="text-white font-mono">{registration}</span>
                         </div>
                       </div>
                     </div>
 
-                    {/* Time Info */}
-                    <div>
-                      <h4 className="text-[9px] uppercase tracking-widest text-yellow-400 font-bold mb-1.5 flex items-center gap-1">
-                        <span className="material-symbols-outlined text-xs">schedule</span>
+                    {/* Time Section */}
+                    <div className="mb-3 pt-2 border-t border-white/5">
+                      <h4 className="text-[9px] uppercase tracking-widest text-yellow-400 font-semibold mb-2 flex items-center gap-1.5">
+                        <span className="material-symbols-outlined text-[11px]">schedule</span>
                         Time
                       </h4>
-                      <div className="grid grid-cols-2 gap-x-3 gap-y-1.5 text-[10px]">
-                        <div className="flex justify-between">
+                      <div className="grid grid-cols-2 gap-x-4 gap-y-1 text-[10px]">
+                        <div>
                           <span className="text-gray-500">First Seen:</span>
-                          <span className="text-white font-mono">
+                          <span className="text-white font-mono ml-1">
                             {firstSeen ? firstSeen.toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' }) : '---'}
                           </span>
                         </div>
-                        <div className="flex justify-between">
+                        <div>
                           <span className="text-gray-500">Last Seen:</span>
-                          <span className="text-white font-mono">
+                          <span className="text-white font-mono ml-1">
                             {lastSeen ? lastSeen.toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' }) : '---'}
                           </span>
                         </div>
-                        <div className="flex justify-between">
+                        <div>
                           <span className="text-gray-500">Duration:</span>
-                          <span className="text-white font-mono">{durationMins > 0 ? `${durationMins}min` : '---'}</span>
+                          <span className="text-white font-mono ml-1">{durationMins > 0 ? `${durationMins}min` : '---'}</span>
                         </div>
-                        <div className="flex justify-between">
+
+                      </div>
+                      <div className="text-[10px] mt-1">
+                      <div>
                           <span className="text-gray-500">Sched Dep:</span>
-                          <span className="text-white font-mono">{summary?.scheduled_departure || '---'}</span>
+                          <span className="text-white font-mono ml-1">
+                            {schedDep ? new Date(schedDep).toLocaleString('en-GB', { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' }) : '---'}
+                          </span>
                         </div>
-                        <div className="flex justify-between col-span-2">
-                          <span className="text-gray-500">Sched Arr:</span>
-                          <span className="text-white font-mono">{summary?.scheduled_arrival || '---'}</span>
-                        </div>
+                        <span className="text-gray-500">Sched Arr:</span>
+                        <span className="text-white font-mono ml-1">
+                          {schedArr ? new Date(schedArr).toLocaleString('en-GB', { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' }) : '---'}
+                        </span>
                       </div>
                     </div>
 
-                    {/* Performance */}
-                    <div>
-                      <h4 className="text-[9px] uppercase tracking-widest text-green-400 font-bold mb-1.5 flex items-center gap-1">
-                        <span className="material-symbols-outlined text-xs">speed</span>
+                    {/* Performance Section */}
+                    <div className="mb-3 pt-2 border-t border-white/5">
+                      <h4 className="text-[9px] uppercase tracking-widest text-green-400 font-semibold mb-2 flex items-center gap-1.5">
+                        <span className="material-symbols-outlined text-[11px]">speed</span>
                         Performance
                       </h4>
-                      <div className="grid grid-cols-2 gap-x-3 gap-y-1.5 text-[10px]">
-                        <div className="flex justify-between">
+                      <div className="grid grid-cols-2 gap-x-4 gap-y-1 text-[10px]">
+                        <div>
                           <span className="text-gray-500">Max Alt:</span>
-                          <span className="text-white font-mono">{maxAlt ? `${maxAlt.toLocaleString()}ft` : '---'}</span>
+                          <span className="text-white font-mono ml-1">{(metaMaxAlt || maxAlt) ? `${(metaMaxAlt || maxAlt)!.toLocaleString()}ft` : '---'}</span>
                         </div>
-                        <div className="flex justify-between">
+                        <div>
                           <span className="text-gray-500">Avg Alt:</span>
-                          <span className="text-white font-mono">{avgAlt ? `${avgAlt.toLocaleString()}ft` : '---'}</span>
+                          <span className="text-white font-mono ml-1">{(metaAvgAlt || avgAlt) ? `${Math.round(metaAvgAlt || avgAlt!).toLocaleString()}ft` : '---'}</span>
                         </div>
-                        <div className="flex justify-between">
+                        <div>
                           <span className="text-gray-500">Cruise Alt:</span>
-                          <span className="text-white font-mono">{cruiseAlt ? `${cruiseAlt.toLocaleString()}ft` : '---'}</span>
+                          <span className="text-white font-mono ml-1">{cruiseAlt ? `${cruiseAlt.toLocaleString()}ft` : '---'}</span>
                         </div>
-                        <div className="flex justify-between">
+                        <div>
                           <span className="text-gray-500">Min Speed:</span>
-                          <span className="text-white font-mono">{minSpeed ? `${Math.round(minSpeed)}kts` : '---'}</span>
+                          <span className="text-white font-mono ml-1">{(metaMinSpeed || minSpeed) ? `${Math.round(metaMinSpeed || minSpeed!)}kts` : '---'}</span>
                         </div>
-                        <div className="flex justify-between">
+                        <div>
                           <span className="text-gray-500">Max Speed:</span>
-                          <span className="text-white font-mono">{maxSpeed ? `${Math.round(maxSpeed)}kts` : '---'}</span>
+                          <span className="text-white font-mono ml-1">{(metaMaxSpeed || maxSpeed) ? `${Math.round(metaMaxSpeed || maxSpeed!)}kts` : '---'}</span>
                         </div>
-                        <div className="flex justify-between">
-                          <span className="text-gray-500">Distance:</span>
-                          <span className="text-white font-mono">{totalDistance > 0 ? `${Math.round(totalDistance)}nm` : '---'}</span>
+                        <div>
+                          <span className="text-gray-500">Avg Speed:</span>
+                          <span className="text-white font-mono ml-1">{metaAvgSpeed ? `${Math.round(metaAvgSpeed)}kts` : '---'}</span>
                         </div>
+                      </div>
+                      <div className="text-[10px] mt-1">
+                        <span className="text-gray-500">Distance:</span>
+                        <span className="text-white font-mono ml-1">{(metaTotalDistance || totalDistance > 0) ? `${Math.round(metaTotalDistance || totalDistance)}nm` : '---'}</span>
                       </div>
                     </div>
 
-                    {/* Track Data */}
-                    <div>
-                      <h4 className="text-[9px] uppercase tracking-widest text-purple-400 font-bold mb-1.5 flex items-center gap-1">
-                        <span className="material-symbols-outlined text-xs">route</span>
+                    {/* Track Data Section */}
+                    <div className="pt-2 border-t border-white/5">
+                      <h4 className="text-[9px] uppercase tracking-widest text-purple-400 font-semibold mb-2 flex items-center gap-1.5">
+                        <span className="material-symbols-outlined text-[11px]">route</span>
                         Track Data
                       </h4>
-                      <div className="grid grid-cols-2 gap-x-3 gap-y-1.5 text-[10px]">
-                        <div className="flex justify-between">
-                          <span className="text-gray-500">Squawks:</span>
-                          <span className="text-white font-mono truncate max-w-[80px]" title={squawkCodes.join(', ')}>
+                      <div className="grid grid-cols-3 gap-2 text-[10px]">
+                        <div>
+                          <span className="text-gray-500 block text-[9px]">Squawks</span>
+                          <span className="text-white font-mono" title={squawkCodes.join(', ')}>
                             {squawkCodes.length > 0 ? squawkCodes.slice(0, 2).join(', ') : '---'}
                           </span>
                         </div>
-                        <div className="flex justify-between">
-                          <span className="text-gray-500">Emergency:</span>
-                          <span className={clsx("font-mono", emergencySquawks.length > 0 ? "text-red-400" : "text-white")}>
-                            {emergencySquawks.length > 0 ? emergencySquawks.join(', ') : 'None'}
+                        <div>
+                          <span className="text-gray-500 block text-[9px]">Emergency</span>
+                          <span className={clsx("font-mono", hasEmergency ? "text-red-400" : "text-white")}>
+                            {hasEmergency ? (emergencySquawks.length > 0 ? emergencySquawks.join(', ') : 'Yes') : 'None'}
                           </span>
                         </div>
-                        <div className="flex justify-between">
-                          <span className="text-gray-500">Total Pts:</span>
-                          <span className="text-white font-mono">{points.length}</span>
+                        <div>
+                          <span className="text-gray-500 block text-[9px]">Total Pts</span>
+                          <span className="text-white font-mono">{report?.total_points || points.length}</span>
                         </div>
+                      </div>
+                    </div>
+                  </div>
+                );
+              })()}
+            </div>
+          </div>
+        );
+      })()}
+
+      {/* Proximity Flight Card - Only shown for proximity rules */}
+      {selectedFlight && proximityFlight && (() => {
+        // Get data from fetched flight or fallback to proximity event data
+        const points = otherFlightData?.points || [];
+        const metadata = otherFlightData?.metadata;
+        const callsign = otherFlightData?.callsign || proximityFlight.other_callsign || proximityFlight.other_flight_id.slice(0, 7);
+        
+        // Calculate values from track data
+        // const lastPoint = points.length ? points[points.length - 1] : null;
+        // const altFt = lastPoint?.alt || metadata?.max_altitude_ft;
+        const aircraftType = metadata?.aircraft_type || '---';
+        
+        return (
+          <div className="absolute top-4 left-[280px] z-20">
+            <div className="liquid-glass rounded-lg p-3 w-52 text-xs shadow-[0_0_15px_rgba(239,68,68,0.3)] border border-red-500/30">
+              {/* Header */}
+              <div className="flex items-center gap-2 mb-2">
+                <div className="bg-red-500/10 border border-red-500/40 p-1.5 rounded text-red-400">
+                  <AlertTriangle className="w-4 h-4" />
+                </div>
+                <div className="flex-1 min-w-0">
+                  <div className="flex items-center gap-1.5">
+                    <h2 className="text-sm font-bold text-white font-mono truncate">
+                      {callsign}
+                    </h2>
+                    {otherFlightLoading && (
+                      <Loader2 className="w-3 h-3 text-red-400 animate-spin shrink-0" />
+                    )}
+                  </div>
+                  <div className="flex items-center gap-1 text-[9px] mt-0.5">
+                    <span className="px-1 py-0.5 rounded bg-red-500/20 text-red-400 font-semibold">
+                      CONFLICT
+                    </span>
+                    <span className="text-gray-400">•</span>
+                    <span className="text-gray-400">{aircraftType}</span>
+                  </div>
+                </div>
+              </div>
+              
+              {/* Route */}
+              <div className="flex items-center justify-between text-[10px] border-t border-white/10 pt-2">
+                <span className="font-mono text-white">{metadata?.origin_airport || '---'}</span>
+                <span className="text-gray-500 text-[8px]">→</span>
+                <span className="font-mono text-white">{metadata?.destination_airport || '---'}</span>
+                <span className="text-gray-500 mx-1"></span>
+                {/* <span className="text-red-400 font-mono">{altFt != null ? `${(altFt/1000).toFixed(1)}k` : '---'}</span> */}
+              </div>
+
+              {/* Proximity Alert - Compact */}
+              <div className="mt-2 p-1.5 bg-red-500/10 border border-red-500/30 rounded">
+                <div className="grid grid-cols-2 gap-x-2 gap-y-1 text-[9px]">
+                  <div className="flex justify-between">
+                    <span className="text-gray-500">Dist:</span>
+                    <span className={clsx(
+                      "font-mono font-semibold",
+                      proximityFlight.distance_nm && proximityFlight.distance_nm < 3 ? "text-red-400" : "text-yellow-400"
+                    )}>
+                      {proximityFlight.distance_nm?.toFixed(1) || '---'}nm
+                    </span>
+                  </div>
+                  <div className="flex justify-between">
+                    <span className="text-gray-500">Alt Δ:</span>
+                    <span className={clsx(
+                      "font-mono font-semibold",
+                      proximityFlight.altitude_diff_ft && Math.abs(proximityFlight.altitude_diff_ft) < 1000 ? "text-red-400" : "text-yellow-400"
+                    )}>
+                      {proximityFlight.altitude_diff_ft ? `${Math.abs(proximityFlight.altitude_diff_ft).toLocaleString()}ft` : '---'}
+                    </span>
+                  </div>
+                </div>
+              </div>
+
+              {/* Expand Info Button */}
+              <button
+                onClick={() => setShowProximityExpandedInfo(!showProximityExpandedInfo)}
+                className="w-full mt-2 flex items-center justify-center gap-1 px-2 py-1 text-[9px] font-semibold text-red-400 bg-red-500/10 hover:bg-red-500/20 border border-red-500/30 rounded transition-all"
+              >
+                <Info className="w-2.5 h-2.5" />
+                <span>More</span>
+                <ChevronRight className={clsx("w-2.5 h-2.5 transition-transform", showProximityExpandedInfo && "rotate-90")} />
+              </button>
+
+              {/* Expanded Flight Info */}
+              {showProximityExpandedInfo && (() => {
+                // Calculate values from track data
+                const firstSeen = points.length ? new Date(points[0].timestamp * 1000) : null;
+                const lastSeen = points.length ? new Date(points[points.length - 1].timestamp * 1000) : null;
+                const durationMs = firstSeen && lastSeen ? lastSeen.getTime() - firstSeen.getTime() : 0;
+                const durationMins = Math.round(durationMs / 60000);
+                const altitudes = points.map(p => p.alt).filter(a => a != null && a > 0);
+                const maxAlt = altitudes.length ? Math.max(...altitudes) : null;
+                
+                // Calculate total distance (haversine formula)
+                const calcDistance = (lat1: number, lon1: number, lat2: number, lon2: number) => {
+                  const R = 3440.065; // Nautical miles
+                  const dLat = (lat2 - lat1) * Math.PI / 180;
+                  const dLon = (lon2 - lon1) * Math.PI / 180;
+                  const a = Math.sin(dLat/2) * Math.sin(dLat/2) + Math.cos(lat1 * Math.PI / 180) * Math.cos(lat2 * Math.PI / 180) * Math.sin(dLon/2) * Math.sin(dLon/2);
+                  return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1-a));
+                };
+                let totalDistance = 0;
+                for (let i = 1; i < points.length; i++) {
+                  totalDistance += calcDistance(points[i-1].lat, points[i-1].lon, points[i].lat, points[i].lon);
+                }
+                
+                // Get squawk codes from track
+                const squawkCodes = [...new Set(points.map(p => p.squawk).filter((s): s is string => !!s && s !== '0000'))];
+                
+                // Use metadata values
+                const airline = metadata?.airline || '---';
+                const category = metadata?.category || '---';
+                const isMilitary = metadata?.is_military || false;
+                const metaMaxAlt = metadata?.max_altitude_ft;
+                const metaTotalDistance = metadata?.total_distance_nm;
+                const metaAvgSpeed = metadata?.avg_speed_kts;
+                
+                return (
+                  <div className="mt-2 pt-2 border-t border-white/10 animate-in slide-in-from-top-2 duration-200 max-h-[300px] overflow-y-auto no-scrollbar">
+                    {/* Compact Info Grid */}
+                    <div className="grid grid-cols-2 gap-x-3 gap-y-1 text-[9px]">
+                      <div className="flex justify-between">
+                        <span className="text-gray-500">Airline:</span>
+                        <span className="text-white font-mono">{airline}</span>
+                      </div>
+                      <div className="flex justify-between">
+                        <span className="text-gray-500">Category:</span>
+                        <span className={clsx("font-mono", isMilitary ? "text-orange-400" : "text-white")}>
+                          {isMilitary ? 'Military' : category}
+                        </span>
+                      </div>
+                      <div className="flex justify-between">
+                        <span className="text-gray-500">Duration:</span>
+                        <span className="text-white font-mono">{durationMins > 0 ? `${durationMins}min` : '---'}</span>
+                      </div>
+                      <div className="flex justify-between">
+                        <span className="text-gray-500">Distance:</span>
+                        <span className="text-white font-mono">{(metaTotalDistance || totalDistance > 0) ? `${Math.round(metaTotalDistance || totalDistance)}nm` : '---'}</span>
+                      </div>
+                      <div className="flex justify-between">
+                        <span className="text-gray-500">Max Alt:</span>
+                        <span className="text-white font-mono">{(metaMaxAlt || maxAlt) ? `${(metaMaxAlt || maxAlt)!.toLocaleString()}ft` : '---'}</span>
+                      </div>
+                      <div className="flex justify-between">
+                        <span className="text-gray-500">Avg Spd:</span>
+                        <span className="text-white font-mono">{metaAvgSpeed ? `${Math.round(metaAvgSpeed)}kts` : '---'}</span>
+                      </div>
+                      <div className="flex justify-between">
+                        <span className="text-gray-500">Squawks:</span>
+                        <span className="text-white font-mono">{squawkCodes.length > 0 ? squawkCodes[0] : '---'}</span>
+                      </div>
+                      <div className="flex justify-between">
+                        <span className="text-gray-500">Points:</span>
+                        <span className="text-white font-mono">{points.length}</span>
                       </div>
                     </div>
                   </div>

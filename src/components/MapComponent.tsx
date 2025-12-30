@@ -255,9 +255,7 @@ export function MapComponent({ onMouseMove: _onMouseMove, selectedFlight, active
       try {
         const data = await fetchCurrentWeather(WEATHER_CENTER.lat, WEATHER_CENTER.lon);
         setWeather(data);
-        console.log('[MapComponent] Weather loaded:', data.conditions);
       } catch (err) {
-        console.warn('[MapComponent] Could not load weather:', err);
       } finally {
         setWeatherLoading(false);
       }
@@ -980,7 +978,6 @@ export function MapComponent({ onMouseMove: _onMouseMove, selectedFlight, active
           });
         }
         
-        console.log('[MapComponent] Proximity timestamps found:', proximityTimestamps);
       }
 
       // Helper to check if a track point is near a proximity event (by timestamp)
@@ -1020,10 +1017,7 @@ export function MapComponent({ onMouseMove: _onMouseMove, selectedFlight, active
         });
         trackPointsSource.setData({ type: 'FeatureCollection', features: trackPointFeatures });
         
-        // Debug log
-        if (proximityTimestamps.length > 0) {
-          console.log('[MapComponent] Proximity points marked:', proximityPointCount, 'out of', flightTrack.points.length);
-        }
+
       }
 
       // Clear proximity event points (no longer using big red markers)

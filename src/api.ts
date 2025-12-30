@@ -118,9 +118,39 @@ export const fetchLiveAnomaliesSince = async (sinceTs: number): Promise<LiveAnom
 };
 
 /**
- * Fetch flight track from the live research database.
+ * Extended live research track response including flight metadata.
  */
-export const fetchLiveResearchTrack = async (flightId: string): Promise<FlightTrack> => {
+export interface LiveResearchTrackResponse {
+  flight_id: string;
+  callsign: string | null;
+  points: FlightTrack['points'];
+  // Metadata fields
+  flight_number: string | null;
+  airline: string | null;
+  aircraft_type: string | null;
+  aircraft_registration: string | null;
+  origin_airport: string | null;
+  destination_airport: string | null;
+  category: string | null;
+  first_seen_ts: number | null;
+  last_seen_ts: number | null;
+  flight_duration_sec: number | null;
+  total_distance_nm: number | null;
+  min_altitude_ft: number | null;
+  max_altitude_ft: number | null;
+  avg_altitude_ft: number | null;
+  avg_speed_kts: number | null;
+  is_anomaly: boolean | null;
+  is_military: boolean | null;
+  scheduled_departure: string | null;
+  scheduled_arrival: string | null;
+}
+
+/**
+ * Fetch flight track from the live research database.
+ * Includes full flight metadata for expanded info display.
+ */
+export const fetchLiveResearchTrack = async (flightId: string): Promise<LiveResearchTrackResponse> => {
   const response = await fetch(`${API_BASE}/live/track/research/${flightId}`);
   if (!response.ok) {
     throw new Error('Failed to fetch live research track');

@@ -115,6 +115,24 @@ export interface AnomalyReport {
   destination_airport?: string;
   airline?: string;
   aircraft_type?: string;
+  aircraft_registration?: string;
+  category?: string;
+  first_seen_ts?: number;
+  last_seen_ts?: number;
+  flight_duration_sec?: number;
+  total_distance_nm?: number;
+  total_points?: number;
+  min_altitude_ft?: number;
+  max_altitude_ft?: number;
+  avg_altitude_ft?: number;
+  min_speed_kts?: number;
+  max_speed_kts?: number;
+  avg_speed_kts?: number;
+  scheduled_departure?: string;
+  scheduled_arrival?: string;
+  squawk_codes?: string;
+  emergency_squawk_detected?: boolean;
+  is_military?: boolean;
 }
 
 // Selected flight context for chat

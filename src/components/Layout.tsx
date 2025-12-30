@@ -184,23 +184,73 @@ export function Layout() {
         destination: destination,
       };
 
-      // Try to load track data
+      // Try to load track data with full metadata
       try {
-        const track = await fetchLiveResearchTrack(flightId);
-        if (track?.points?.length > 0) {
-          selectedFlightObj.track = track;
+        const trackData = await fetchLiveResearchTrack(flightId);
+        if (trackData?.points?.length > 0) {
+          // Set track with flight_id and points
+          selectedFlightObj.track = {
+            flight_id: trackData.flight_id,
+            points: trackData.points,
+          };
           
-          // Get callsign from track if not provided
-          const firstPoint = track.points[0];
-          if (!selectedFlightObj.callsign && firstPoint.callsign) {
-            selectedFlightObj.callsign = firstPoint.callsign;
+          // Use metadata from track response for expanded info
+          if (!selectedFlightObj.callsign && trackData.callsign) {
+            selectedFlightObj.callsign = trackData.callsign;
+          }
+          if (!selectedFlightObj.origin && trackData.origin_airport) {
+            selectedFlightObj.origin = trackData.origin_airport;
+          }
+          if (!selectedFlightObj.destination && trackData.destination_airport) {
+            selectedFlightObj.destination = trackData.destination_airport;
+          }
+          
+          // Build a synthetic report with metadata for the expanded info panel
+          // This ensures MapArea has all the data it needs for the expanded view
+          if (!selectedFlightObj.report) {
+            selectedFlightObj.report = {
+              flight_id: flightId,
+              callsign: trackData.callsign || callsign,
+              flight_number: trackData.flight_number || undefined,
+              timestamp: trackData.first_seen_ts || Math.floor(Date.now() / 1000),
+              is_anomaly: trackData.is_anomaly ?? isAnomaly,
+              severity_cnn: 0,
+              severity_dense: 0,
+              airline: trackData.airline || undefined,
+              aircraft_type: trackData.aircraft_type || undefined,
+              origin_airport: trackData.origin_airport || origin,
+              destination_airport: trackData.destination_airport || destination,
+              full_report: {
+                summary: {
+                  callsign: trackData.callsign || callsign,
+                  flight_number: trackData.flight_number || undefined,
+                  airline: trackData.airline || undefined,
+                  aircraft_type: trackData.aircraft_type || undefined,
+                  category: trackData.category || undefined,
+                  origin: trackData.origin_airport || origin,
+                  destination: trackData.destination_airport || destination,
+                  aircraft_registration: trackData.aircraft_registration || undefined,
+                  first_seen_ts: trackData.first_seen_ts || undefined,
+                  last_seen_ts: trackData.last_seen_ts || undefined,
+                  flight_duration_sec: trackData.flight_duration_sec || undefined,
+                  total_distance_nm: trackData.total_distance_nm || undefined,
+                  min_altitude_ft: trackData.min_altitude_ft || undefined,
+                  max_altitude_ft: trackData.max_altitude_ft || undefined,
+                  avg_altitude_ft: trackData.avg_altitude_ft || undefined,
+                  avg_speed_kts: trackData.avg_speed_kts || undefined,
+                  is_military: trackData.is_military || undefined,
+                  scheduled_departure: trackData.scheduled_departure || undefined,
+                  scheduled_arrival: trackData.scheduled_arrival || undefined,
+                },
+              },
+            };
           }
         }
       } catch (err) {
         console.warn('Could not load track for clicked flight:', err);
       }
 
-      // If it's an anomaly, try to load the anomaly report
+      // If it's an anomaly, try to load the anomaly report (which may have more details)
       if (isAnomaly) {
         try {
           // Fetch recent anomalies to find this flight's report (last 24 hours)
@@ -211,8 +261,8 @@ export function Layout() {
           if (report) {
             selectedFlightObj.report = report;
             selectedFlightObj.anomalyScore = report.severity_cnn || report.severity_dense || 0;
-            selectedFlightObj.origin = report.origin_airport;
-            selectedFlightObj.destination = report.destination_airport;
+            if (report.origin_airport) selectedFlightObj.origin = report.origin_airport;
+            if (report.destination_airport) selectedFlightObj.destination = report.destination_airport;
             
             // Get callsign from report if not set
             if (!selectedFlightObj.callsign && report.callsign) {

@@ -2,7 +2,7 @@ import { useEffect, useState, useRef, useCallback, useMemo } from 'react';
 import { AlertTriangle, X, Sparkles } from 'lucide-react';
 import type { AnomalyReport, FlightStatus, SelectedFlight, StatFilter } from '../types';
 import { FlightRow } from './FlightRow';
-import { fetchLiveAnomalies, fetchSystemReports, fetchFlightStatus, fetchUnifiedTrack, fetchSystemReportTrack, fetchLiveAnomaliesSince, fetchLiveResearchTrack } from '../api';
+import { fetchLiveAnomalies, fetchSystemReports, fetchFlightStatus, fetchUnifiedTrack, fetchSystemReportTrack, fetchLiveAnomaliesSince, fetchLiveResearchTrack, fetchAllLiveFlights } from '../api';
 import { getAnomalyReasons } from '../utils/reason';
 
 // Stats calculated from displayed reasons (matches glow logic)
@@ -12,7 +12,7 @@ export interface CalculatedStats {
   traffic: number;
   military: number;
   safety: number;
-  totalFlights: number; // Total count of all flights
+  totalFlights: number; // Total count of all distinct flights from API
 }
 
 // Reason categories for stats calculation (must match FlightRow highlighting logic)
@@ -24,14 +24,15 @@ const MILITARY_REASONS = ['Military Flight', 'Operational Military'];
 const CIVILIAN_AIRLINE_PREFIXES = ['ELY', 'LY', 'UAE', 'EK', 'THY', 'TK', 'RJA', 'RJ', 'ETH', 'ET', 'SAS', 'SK', 'KLM', 'AF', 'BAW', 'BA', 'DLH', 'LH', 'SWR', 'LX', 'AAL', 'AA', 'UAL', 'UA', 'DAL', 'DL'];
 
 // Calculate stats from reports based on displayed reasons
-function calculateStats(reports: AnomalyReport[]): CalculatedStats {
+// totalFlightsOverride: if provided, use this as the total flights count (e.g., from live API total_count)
+function calculateStats(reports: AnomalyReport[], totalFlightsOverride?: number): CalculatedStats {
   const stats: CalculatedStats = {
     anomalies: 0,
     emergency: 0,
     traffic: 0,
     military: 0,
     safety: 0,
-    totalFlights: reports.length,
+    totalFlights: totalFlightsOverride ?? reports.length,
   };
 
   for (const report of reports) {
@@ -155,6 +156,7 @@ export function DataStreamTable({ mode, selectedFlight, onFlightSelect, onFlight
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [callsignFilter, setCallsignFilter] = useState('');
+  const [totalLiveFlights, setTotalLiveFlights] = useState<number | undefined>(undefined);
   
   // Track seen anomaly IDs to detect new ones
   const seenAnomalyIds = useRef<Set<string>>(new Set());
@@ -165,10 +167,10 @@ export function DataStreamTable({ mode, selectedFlight, onFlightSelect, onFlight
     try {
       const now = Math.floor(Date.now() / 1000);
       
-      // First fetch: get all anomalies from last 24 hours
+      // First fetch: get all anomalies from last 1 hour
       if (lastFetchTs.current === 0) {
-        const dayAgo = now - 24 * 60 * 60;
-        const data = await fetchLiveAnomalies(dayAgo, now);
+        const hourAgo = now - 1 * 60 * 60;
+        const data = await fetchLiveAnomalies(hourAgo, now);
         
         // Initialize seen IDs
         data.forEach(r => seenAnomalyIds.current.add(r.flight_id));
@@ -192,8 +194,8 @@ export function DataStreamTable({ mode, selectedFlight, onFlightSelect, onFlight
       }
       
       // Merge with existing reports (update existing, add new)
-      const dayAgo = now - 24 * 60 * 60;
-      const data = await fetchLiveAnomalies(dayAgo, now);
+      const hourAgo = now - 1 * 60 * 60;
+      const data = await fetchLiveAnomalies(hourAgo, now);
       return data;
     } catch (err) {
       console.warn('Failed to fetch live data:', err);
@@ -216,6 +218,21 @@ export function DataStreamTable({ mode, selectedFlight, onFlightSelect, onFlight
         if (mode === 'live') {
           // For live mode, use new fetch function
           data = await fetchLiveData();
+          
+          // Also fetch total flights count from live API to get distinct flight count
+          try {
+            const liveFlightsResponse = await fetchAllLiveFlights();
+            if (mounted) {
+              setTotalLiveFlights(liveFlightsResponse.total_count);
+            }
+          } catch (err) {
+            console.warn('Failed to fetch total live flights count:', err);
+            // Fallback: count distinct flight IDs from anomalies
+            if (mounted) {
+              const distinctFlightIds = new Set(data.map(r => r.flight_id));
+              setTotalLiveFlights(distinctFlightIds.size);
+            }
+          }
         } else {
           // For history mode, use selected date
           const startOfDay = new Date(selectedDate);
@@ -227,6 +244,12 @@ export function DataStreamTable({ mode, selectedFlight, onFlightSelect, onFlight
           const endTs = Math.floor(endOfDay.getTime() / 1000);
           
           data = await fetchSystemReports(startTs, endTs, 200);
+          
+          // For history mode, count distinct flight IDs
+          if (mounted) {
+            const distinctFlightIds = new Set(data.map(r => r.flight_id));
+            setTotalLiveFlights(distinctFlightIds.size);
+          }
         }
 
         if (mounted) {
@@ -280,7 +303,8 @@ export function DataStreamTable({ mode, selectedFlight, onFlightSelect, onFlight
   }, [reports, aiResultsFilter, callsignFilter]);
 
   // Calculate and report stats when reports change
-  const calculatedStats = useMemo(() => calculateStats(filteredReports), [filteredReports]);
+  // Use totalLiveFlights for the flights count (distinct flight IDs from API)
+  const calculatedStats = useMemo(() => calculateStats(filteredReports, totalLiveFlights), [filteredReports, totalLiveFlights]);
   
   useEffect(() => {
     if (onStatsChange) {
