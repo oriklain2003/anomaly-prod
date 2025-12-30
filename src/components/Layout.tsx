@@ -8,12 +8,29 @@ import { ChevronLeft, ChevronRight } from 'lucide-react';
 import type { SelectedFlight, HighlightState } from '../types';
 import { fetchLiveResearchTrack, fetchLiveAnomalies } from '../api';
 
+// Bell sound source
+const ALERT_AUDIO_SRC = '/plane_ring.mp3';
+const MIN_INTERVAL = 3000; // Minimum 3 seconds between sounds
+
 // Alert sound hook for new anomaly detection
-// Uses Web Audio API to generate a synthetic alert tone
+// Uses mp3 file for bell sound
 function useAlertSound() {
-  const audioContextRef = useRef<AudioContext | null>(null);
+  const audioRef = useRef<HTMLAudioElement | null>(null);
   const lastPlayedRef = useRef<number>(0);
-  const MIN_INTERVAL = 3000; // Minimum 3 seconds between sounds
+
+  // Initialize audio element on mount
+  useEffect(() => {
+    const audio = new Audio(ALERT_AUDIO_SRC);
+    audio.preload = 'auto';
+    audioRef.current = audio;
+
+    return () => {
+      if (audioRef.current) {
+        audioRef.current.pause();
+        audioRef.current = null;
+      }
+    };
+  }, []);
 
   const playAlert = useCallback(() => {
     const now = Date.now();
@@ -22,47 +39,17 @@ function useAlertSound() {
     }
     lastPlayedRef.current = now;
 
+    const audio = audioRef.current;
+    if (!audio) return;
+
     try {
-      // Create audio context on first play (required for browsers)
-      if (!audioContextRef.current) {
-        audioContextRef.current = new (window.AudioContext || (window as any).webkitAudioContext)();
-      }
-      
-      const ctx = audioContextRef.current;
-      
-      // Create oscillator for alert tone
-      const oscillator = ctx.createOscillator();
-      const gainNode = ctx.createGain();
-      
-      oscillator.connect(gainNode);
-      gainNode.connect(ctx.destination);
-      
-      // Two-tone alert sound (like radar ping)
-      oscillator.frequency.setValueAtTime(880, ctx.currentTime); // A5
-      oscillator.frequency.setValueAtTime(660, ctx.currentTime + 0.1); // E5
-      oscillator.frequency.setValueAtTime(880, ctx.currentTime + 0.2); // A5
-      
-      // Volume envelope
-      gainNode.gain.setValueAtTime(0.3, ctx.currentTime);
-      gainNode.gain.exponentialRampToValueAtTime(0.01, ctx.currentTime + 0.4);
-      
-      oscillator.type = 'sine';
-      oscillator.start(ctx.currentTime);
-      oscillator.stop(ctx.currentTime + 0.4);
-      
+      audio.pause();
+      audio.currentTime = 0;
+      void audio.play();
       console.log('[Alert] Playing anomaly alert sound');
     } catch (err) {
       console.warn('Could not play alert sound:', err);
     }
-  }, []);
-
-  // Cleanup on unmount
-  useEffect(() => {
-    return () => {
-      if (audioContextRef.current) {
-        audioContextRef.current.close();
-      }
-    };
   }, []);
 
   return playAlert;

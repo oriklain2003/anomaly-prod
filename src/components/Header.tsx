@@ -1,8 +1,11 @@
-import { useState } from 'react';
+import { useState, useRef, useEffect } from 'react';
 import { Settings, Bell } from 'lucide-react';
 import { Link, useLocation } from 'react-router-dom';
 import clsx from 'clsx';
 import { Flight3DDemo } from './Flight3DDemo';
+
+// Bell sound source
+const ALERT_AUDIO_SRC = '/plane_ring.mp3';
 
 type NavTab = 'dashboard' | 'route-check' | 'intelligence' | 'explorer';
 
@@ -16,6 +19,34 @@ const navItems: { id: NavTab; label: string; path: string }[] = [
 export function Header() {
   const location = useLocation();
   const [show3DDemo, setShow3DDemo] = useState(false);
+  const bellAudioRef = useRef<HTMLAudioElement | null>(null);
+
+  // Initialize bell audio element on mount
+  useEffect(() => {
+    const audio = new Audio(ALERT_AUDIO_SRC);
+    audio.preload = 'auto';
+    bellAudioRef.current = audio;
+
+    return () => {
+      if (bellAudioRef.current) {
+        bellAudioRef.current.pause();
+        bellAudioRef.current = null;
+      }
+    };
+  }, []);
+
+  const handleBellClick = () => {
+    const audio = bellAudioRef.current;
+    if (!audio) return;
+
+    try {
+      audio.pause();
+      audio.currentTime = 0;
+      void audio.play();
+    } catch (error) {
+      console.warn('Unable to play bell sound', error);
+    }
+  };
 
   const getActiveTab = (): NavTab => {
     if (location.pathname === '/route-check') return 'route-check';
@@ -69,7 +100,10 @@ export function Header() {
           <button className="text-gray-500 hover:text-white hover:bg-white/10 p-2 rounded-md transition-colors border border-transparent hover:border-white/5">
             <Settings className="h-5 w-5" />
           </button>
-          <button className="text-gray-500 hover:text-white hover:bg-white/10 p-2 rounded-md transition-colors border border-transparent hover:border-white/5">
+          <button 
+            onClick={handleBellClick}
+            className="text-gray-500 hover:text-white hover:bg-white/10 p-2 rounded-md transition-colors border border-transparent hover:border-white/5"
+          >
             <Bell className="h-5 w-5" />
           </button>
 
