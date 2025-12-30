@@ -7,11 +7,12 @@ import { Flight3DDemo } from './Flight3DDemo';
 // Bell sound source
 const ALERT_AUDIO_SRC = '/plane_ring.mp3';
 
-type NavTab = 'dashboard' | 'route-check' | 'intelligence' | 'explorer';
+type NavTab = 'dashboard' | 'route-check' | 'trajectory' | 'intelligence' | 'explorer';
 
 const navItems: { id: NavTab; label: string; path: string }[] = [
   { id: 'dashboard', label: 'Dashboard', path: 'https://anomaly-last-ui-2.vercel.app/intelligence?tab=overview' },
   { id: 'route-check', label: 'Route Check', path: '/route-check' },
+  { id: 'trajectory', label: 'Trajectory Planner', path: '/trajectory-planner' },
   { id: 'intelligence', label: 'Intelligence', path: '/' },
   { id: 'explorer', label: 'Explorer', path: '/' },
 ];
@@ -50,6 +51,7 @@ export function Header() {
 
   const getActiveTab = (): NavTab => {
     if (location.pathname === '/route-check') return 'route-check';
+    if (location.pathname === '/trajectory-planner') return 'trajectory';
     return 'dashboard';
   };
 

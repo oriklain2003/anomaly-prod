@@ -51,6 +51,11 @@ function createLiveFlightMarkerElement(
   const el = document.createElement('div');
   el.className = 'live-flight-marker';
   el.style.cursor = 'pointer';
+  // Position the element so the plane icon is at the anchor point (0,0)
+  // The icon is 18px, so we offset by half to center it
+  el.style.position = 'relative';
+  el.style.width = '0';
+  el.style.height = '0';
 
   const color = isAnomaly ? '#ef4444' : '#60a5fa';
   const glowColor = isAnomaly ? 'rgba(239, 68, 68, 0.6)' : 'rgba(96, 165, 250, 0.6)';
@@ -61,13 +66,16 @@ function createLiveFlightMarkerElement(
   // Aviation headings are clockwise from north, so we use heading directly
   const rotation = heading || 0;
 
+  // Use absolute positioning to ensure the plane icon stays exactly at the anchor point
+  // The icon container is centered on (0,0), and the label floats below it
   el.innerHTML = `
-    <div style="display: flex; flex-direction: column; align-items: center; position: relative;">
+    <div style="position: absolute; display: flex; flex-direction: column; align-items: center; transform: translate(-50%, -50%);">
       <span class="material-symbols-outlined live-flight-icon" style="
         font-size: 18px;
         color: ${color}; 
         filter: drop-shadow(0 0 10px ${glowColor});
         transform: rotate(${rotation}deg);
+        transform-origin: center center;
       ">flight</span>
       <span style="
         color: ${textColor}; 
@@ -930,7 +938,6 @@ export function MapComponent({ onMouseMove: _onMouseMove, selectedFlight, active
         endMarkerRef.current = new maplibregl.Marker({
           element: createLiveFlightMarkerElement(callsign || '', heading, isAnomaly),
           anchor: 'center',
-          offset: [0, 12],
         })
           .setLngLat([endPoint.lon, endPoint.lat])
           .addTo(map.current!);

@@ -462,6 +462,147 @@ export interface RouteCheckResponse {
 // Weather Types
 // ============================================================
 
+// ============================================================
+// Trajectory Planner Types
+// ============================================================
+
+export interface TrajectoryWaypoint {
+  lat: number;
+  lon: number;
+  alt: number;
+  id: string;
+  speed_kts?: number;
+}
+
+export interface InterpolatedPoint {
+  lat: number;
+  lon: number;
+  alt: number;
+  timestamp: string;
+  time_offset_sec: number;
+  segment_index: number;
+  bearing: number;
+  speed_kts: number;
+}
+
+export interface TrafficConflict {
+  flight_number: string;
+  airline: string;
+  flight_type: 'departure' | 'arrival';
+  airport: string;
+  scheduled_time: string;
+  our_position: {
+    lat: number;
+    lon: number;
+    alt: number;
+    timestamp: string;
+  };
+  estimated_traffic_position: {
+    lat: number;
+    lon: number;
+    alt: number;
+    phase: string;
+  };
+  horizontal_distance_nm: number;
+  vertical_distance_ft: number;
+  severity: 'critical' | 'warning' | 'info';
+  time_to_conflict_sec: number;
+}
+
+export interface TrajectoryPlanRequest {
+  waypoints: TrajectoryWaypoint[];
+  start_datetime: string;
+  horizontal_threshold_nm?: number;
+  vertical_threshold_ft?: number;
+  interpolation_interval_sec?: number;
+}
+
+// Flight path point for departure/arrival visualization
+export interface FlightPathPoint {
+  lat: number;
+  lon: number;
+  alt: number;
+  time_offset_min: number;
+}
+
+// Flight path (departure or arrival trajectory line)
+export interface FlightPath {
+  flight_number: string;
+  airline: string;
+  flight_type: 'departure' | 'arrival';
+  airport_code: string;
+  airport_lat: number;
+  airport_lon: number;
+  destination_or_origin: string;
+  scheduled_time: string;
+  bearing: number;
+  path_points: FlightPathPoint[];
+  aircraft_type: string;
+  // Time relevance fields (calculated based on trajectory)
+  is_time_relevant: boolean;
+  min_distance_nm: number | null;  // Minimum horizontal distance to trajectory
+  min_vertical_ft: number | null;  // Minimum vertical separation
+}
+
+export interface TrajectoryPlanResponse {
+  trajectory: InterpolatedPoint[];
+  trajectory_summary: {
+    total_points: number;
+    total_distance_nm: number;
+    total_duration_sec: number;
+    total_duration_min: number;
+    start_time: string;
+    end_time: string | null;
+  };
+  airports_checked: Airport[];
+  traffic_summary: {
+    airports_with_traffic: number;
+    total_flights_analyzed: number;
+    departures: number;
+    arrivals: number;
+  };
+  conflicts: TrafficConflict[];
+  conflicts_summary: {
+    total: number;
+    critical: number;
+    warning: number;
+    info: number;
+  };
+  is_clear: boolean;
+  thresholds: {
+    horizontal_nm: number;
+    vertical_ft: number;
+  };
+  // Flight paths for visualization
+  flight_paths: FlightPath[];
+}
+
+export interface AirportTrafficResponse {
+  airport_code: string;
+  airport_name: string;
+  date: string;
+  departures: Array<{
+    flight_number: string;
+    airline: string;
+    destination: string;
+    scheduled_time: string;
+    aircraft?: string;
+  }>;
+  arrivals: Array<{
+    flight_number: string;
+    airline: string;
+    origin: string;
+    scheduled_time: string;
+    aircraft?: string;
+  }>;
+  total_departures: number;
+  total_arrivals: number;
+}
+
+// ============================================================
+// Weather Types
+// ============================================================
+
 export interface WeatherData {
   // Temperature
   temperature_c: number | null;

@@ -696,6 +696,76 @@ export const submitFlightFeedback = async (payload: FeedbackPayload): Promise<{ 
 };
 
 // ============================================================
+// Trajectory Planner API
+// ============================================================
+
+import type { 
+  TrajectoryPlanRequest, 
+  TrajectoryPlanResponse, 
+  AirportTrafficResponse,
+} from './types';
+
+/**
+ * Get list of configured airports for trajectory planning.
+ */
+export const fetchTrajectoryAirports = async (): Promise<{ airports: Airport[]; total: number }> => {
+  const response = await fetch(`${API_BASE}/trajectory/airports`);
+  if (!response.ok) {
+    throw new Error('Failed to fetch trajectory airports');
+  }
+  return response.json();
+};
+
+/**
+ * Plan a trajectory and detect conflicts with airport traffic.
+ * 
+ * This endpoint:
+ * 1. Interpolates the trajectory at regular intervals (default 10 sec)
+ * 2. Fetches scheduled departures/arrivals from nearby airports
+ * 3. Estimates traffic positions at each trajectory point
+ * 4. Detects conflicts based on horizontal and vertical separation
+ */
+export const planTrajectory = async (
+  request: TrajectoryPlanRequest,
+  signal?: AbortSignal
+): Promise<TrajectoryPlanResponse> => {
+  const response = await fetch(`${API_BASE}/trajectory/plan`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(request),
+    signal,
+  });
+  
+  if (!response.ok) {
+    const errorData = await response.json().catch(() => ({}));
+    throw new Error(errorData.detail || 'Failed to plan trajectory');
+  }
+  
+  return response.json();
+};
+
+/**
+ * Get departures and arrivals for a specific airport.
+ */
+export const fetchAirportTraffic = async (
+  airportCode: string,
+  date?: string
+): Promise<AirportTrafficResponse> => {
+  const params = new URLSearchParams();
+  if (date) params.set('date', date);
+  
+  const url = params.toString()
+    ? `${API_BASE}/trajectory/traffic/${encodeURIComponent(airportCode)}?${params}`
+    : `${API_BASE}/trajectory/traffic/${encodeURIComponent(airportCode)}`;
+  
+  const response = await fetch(url);
+  if (!response.ok) {
+    throw new Error(`Failed to fetch traffic for ${airportCode}`);
+  }
+  return response.json();
+};
+
+// ============================================================
 // Weather API
 // ============================================================
 
