@@ -51,7 +51,7 @@ export function ReplayModal({ mainFlightId, secondaryFlightIds = [], events = []
   const [showTools, setShowTools] = useState(false);
   const [distanceTool, setDistanceTool] = useState(true);
   const [airportDistanceTool, setAirportDistanceTool] = useState(true);
-  const [showSquawk, setShowSquawk] = useState(false);
+  const [showSquawk, setShowSquawk] = useState(true);
   const [show3DView, setShow3DView] = useState(false);
 
   const animationRef = useRef<number | undefined>(undefined);
@@ -816,7 +816,14 @@ export function ReplayModal({ mainFlightId, secondaryFlightIds = [], events = []
                         {showSquawk && (
                           <div className="flex justify-between">
                             <span>Squawk:</span>
-                            <span className="font-mono text-yellow-400">1200</span>
+                            <span className={clsx(
+                              "font-mono",
+                              tel.squawk && ['7500', '7600', '7700'].includes(tel.squawk) 
+                                ? "text-red-400 font-bold" 
+                                : "text-yellow-400"
+                            )}>
+                              {tel.squawk || '----'}
+                            </span>
                           </div>
                         )}
 
