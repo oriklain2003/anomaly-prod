@@ -706,6 +706,7 @@ export function TacticalChat({ selectedFlight, onOpenReplay, onAIResults, onHigh
         secondaryFlightIds={getSecondaryFlightIds()}
         aircraftType={selectedFlight.report?.aircraft_type}
         callsign={selectedFlight.callsign || selectedFlight.report?.callsign}
+        events={getReplayEvents()}
         // Embed chat in 3D view
         embeddedChatProps={{
           selectedFlight,

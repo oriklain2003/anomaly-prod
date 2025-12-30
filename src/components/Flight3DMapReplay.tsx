@@ -5,7 +5,7 @@ import { OrbitControls, Line, Text, Stars, useGLTF } from '@react-three/drei';
 import * as THREE from 'three';
 import maplibregl from 'maplibre-gl';
 import 'maplibre-gl/dist/maplibre-gl.css';
-import { X, Play, Pause, SkipBack, SkipForward, RotateCcw, Target, Send, Mic, ChevronRight, MessageSquare, Video, Orbit, Brain } from 'lucide-react';
+import { X, Play, Pause, SkipBack, SkipForward, RotateCcw, Target, Send, Mic, ChevronRight, MessageSquare, Video, Orbit, Brain, AlertTriangle, MapPin } from 'lucide-react';
 import { ChatMessage, type Message } from './ChatMessage';
 import { fetchFeedbackTrack, fetchUnifiedTrack, fetchReplayOtherFlight } from '../api';
 import type { TrackPoint, FlightTrack, HighlightState } from '../types';
@@ -99,6 +99,14 @@ interface EmbeddedChatProps {
   isRTL: boolean;
 }
 
+export interface ReplayEvent {
+  timestamp: number;
+  description: string;
+  type: 'proximity' | 'deviation' | 'ml_anomaly' | 'holding' | 'go_around' | 'other';
+  lat?: number;
+  lon?: number;
+}
+
 interface Flight3DMapReplayProps {
   flightId: string;
   onClose: () => void;
@@ -110,6 +118,7 @@ interface Flight3DMapReplayProps {
   category?: string; // Aircraft category from parent
   callsign?: string; // Flight callsign from parent
   embeddedChatProps?: EmbeddedChatProps; // Props for embedded chat panel
+  events?: ReplayEvent[]; // Proximity events for event log sidebar
 }
 
 interface FlightData {
@@ -1380,7 +1389,7 @@ async function renderMapLibreTexture(bbox: BoundingBox): Promise<string | null> 
 // Flight colors for multi-flight display
 const FLIGHT_COLORS = ['#00ffff', '#ef4444', '#10b981', '#f59e0b', '#8b5cf6'];
 
-export function Flight3DMapReplay({ flightId, onClose, highlight, onClearHighlight, trackPoints, secondaryFlightIds = [], aircraftType, category, callsign, embeddedChatProps }: Flight3DMapReplayProps) {
+export function Flight3DMapReplay({ flightId, onClose, highlight, onClearHighlight, trackPoints, secondaryFlightIds = [], aircraftType, category, callsign, embeddedChatProps, events = [] }: Flight3DMapReplayProps) {
   const [flightData, setFlightData] = useState<FlightData | null>(null);
   const [secondaryFlights, setSecondaryFlights] = useState<FlightData[]>([]);
   const [loading, setLoading] = useState(true);
@@ -1393,6 +1402,32 @@ export function Flight3DMapReplay({ flightId, onClose, highlight, onClearHighlig
   const [highlightApplied, setHighlightApplied] = useState(false);
   const [isChatCollapsed, setIsChatCollapsed] = useState(false);
   const controlsRef = useRef<any>(null);
+
+  // Filter to only show proximity events
+  const proximityEvents = useMemo(() => 
+    events.filter(e => e.type === 'proximity'),
+    [events]
+  );
+
+  // Handle event click - jump to timestamp
+  const handleEventClick = (event: ReplayEvent) => {
+    if (!flightData) return;
+    
+    // Find the closest point index to this timestamp
+    let closestIdx = 0;
+    let minDiff = Infinity;
+    
+    for (let i = 0; i < flightData.points.length; i++) {
+      const diff = Math.abs(flightData.points[i].timestamp - event.timestamp);
+      if (diff < minDiff) {
+        minDiff = diff;
+        closestIdx = i;
+      }
+    }
+    
+    setCurrentPointIndex(closestIdx);
+    setIsPlaying(false);
+  };
   
   // Map state
   const [bbox, setBbox] = useState<BoundingBox | null>(null);
@@ -2196,6 +2231,56 @@ export function Flight3DMapReplay({ flightId, onClose, highlight, onClearHighlig
           )}
         </ul>
       </div>
+
+      {/* Proximity Event Log Sidebar - Only show if there are proximity events */}
+      {/* Positioned on the left side, below telemetry panels */}
+      {proximityEvents.length > 0 && (
+        <div className="absolute left-[280px] top-4 w-56 bg-black/90 backdrop-blur-md border border-red-500/30 rounded-xl flex flex-col z-20 max-h-[350px] shadow-[0_0_20px_rgba(239,68,68,0.2)]">
+          <div className="p-3 border-b border-red-500/20 bg-red-500/5 shrink-0">
+            <h3 className="font-bold text-white text-sm flex items-center gap-2">
+              <AlertTriangle className="w-4 h-4 text-red-400" />
+              Proximity Events
+              <span className="ml-auto text-xs bg-red-500/20 text-red-400 px-2 py-0.5 rounded-full">
+                {proximityEvents.length}
+              </span>
+            </h3>
+          </div>
+          <div className="flex-1 overflow-y-auto p-2 space-y-2 scrollbar-thin scrollbar-thumb-red-500/20 scrollbar-track-transparent">
+            {proximityEvents.map((ev, i) => {
+              // Check if this event is near the current timestamp
+              const currentTimestamp = flightData?.points[currentPointIndex]?.timestamp || 0;
+              const isActive = Math.abs(currentTimestamp - ev.timestamp) < 30;
+              
+              return (
+                <button 
+                  key={i}
+                  onClick={() => handleEventClick(ev)}
+                  className={clsx(
+                    "w-full text-left p-3 rounded-lg transition-all group border",
+                    isActive
+                      ? "bg-red-500/20 border-red-500/40"
+                      : "bg-black/40 border-white/5 hover:bg-white/5 hover:border-red-500/30"
+                  )}
+                >
+                  <div className="flex items-center justify-between mb-1">
+                    <span className="text-[10px] font-bold uppercase px-1.5 py-0.5 rounded bg-red-500/20 text-red-300">
+                      PROXIMITY
+                    </span>
+                    <span className="font-mono text-[10px] text-white/40">
+                      {formatTime(ev.timestamp)}
+                    </span>
+                  </div>
+                  <p className="text-xs text-white/80 line-clamp-2 mb-2">{ev.description}</p>
+                  <div className="flex items-center gap-1 text-[10px] text-cyan-400 opacity-0 group-hover:opacity-100 transition-opacity">
+                    <MapPin className="w-3 h-3" />
+                    Jump to event
+                  </div>
+                </button>
+              );
+            })}
+          </div>
+        </div>
+      )}
     </div>,
     document.body
   );

@@ -2,13 +2,22 @@ import { useEffect, useRef, useState, useMemo } from 'react';
 import { Canvas, useFrame, useThree } from '@react-three/fiber';
 import { OrbitControls, Line, Text, Stars, Float } from '@react-three/drei';
 import * as THREE from 'three';
-import { X, Play, Pause, SkipBack, SkipForward, RotateCcw, Box } from 'lucide-react';
+import { X, Play, Pause, SkipBack, SkipForward, RotateCcw, Box, AlertTriangle, MapPin } from 'lucide-react';
 import { fetchFeedbackTrack, fetchUnifiedTrack } from '../api';
 import type { TrackPoint } from '../types';
 import clsx from 'clsx';
 
+export interface ReplayEvent {
+  timestamp: number;
+  description: string;
+  type: 'proximity' | 'deviation' | 'ml_anomaly' | 'holding' | 'go_around' | 'other';
+  lat?: number;
+  lon?: number;
+}
+
 interface Flight3DReplayProps {
   flightId: string;
+  events?: ReplayEvent[];
   onClose: () => void;
 }
 
@@ -422,7 +431,7 @@ function TelemetryHUD({ flight, currentTime }: { flight: FlightData; currentTime
 }
 
 // Main component
-export function Flight3DReplay({ flightId, onClose }: Flight3DReplayProps) {
+export function Flight3DReplay({ flightId, events = [], onClose }: Flight3DReplayProps) {
   const [flight, setFlight] = useState<FlightData | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -435,6 +444,18 @@ export function Flight3DReplay({ flightId, onClose }: Flight3DReplayProps) {
   
   const animationRef = useRef<number | undefined>(undefined);
   const lastFrameTime = useRef(0);
+
+  // Filter to only show proximity events
+  const proximityEvents = useMemo(() => 
+    events.filter(e => e.type === 'proximity'),
+    [events]
+  );
+
+  // Handle event click - jump to timestamp
+  const handleEventClick = (event: ReplayEvent) => {
+    setCurrentTime(event.timestamp);
+    setIsPlaying(false);
+  };
 
   // Fetch flight data
   useEffect(() => {
@@ -545,39 +566,84 @@ export function Flight3DReplay({ flightId, onClose }: Flight3DReplayProps) {
   }
 
   return (
-    <div className="fixed inset-0 z-[9999] bg-black">
-      {/* 3D Canvas */}
-      <Canvas
-        camera={{ position: [30, 40, 50], fov: 60, near: 0.1, far: 1000 }}
-        gl={{ antialias: true, alpha: false }}
-      >
-        <Scene 
-          flight={flight} 
-          currentTime={currentTime}
-          minTime={minTime}
-          maxTime={maxTime}
-        />
-      </Canvas>
-
-      {/* Telemetry HUD */}
-      <TelemetryHUD flight={flight} currentTime={currentTime} />
-
-      {/* Header with close button */}
-      <div className="absolute top-4 right-4 flex items-center gap-3 z-10">
-        <div className="bg-black/80 backdrop-blur-md border border-cyan-500/30 rounded-lg px-4 py-2 flex items-center gap-2">
-          <Box className="w-4 h-4 text-cyan-400" />
-          <span className="text-cyan-400 font-mono text-sm">3D FLIGHT REPLAY</span>
+    <div className="fixed inset-0 z-[9999] bg-black flex">
+      {/* Event Log Sidebar - Only show if there are proximity events */}
+      {proximityEvents.length > 0 && (
+        <div className="w-64 bg-black/90 backdrop-blur-md border-r border-cyan-500/20 flex flex-col z-20 shrink-0">
+          <div className="p-4 border-b border-cyan-500/20 bg-cyan-500/5">
+            <h3 className="font-bold text-white text-sm flex items-center gap-2">
+              <AlertTriangle className="w-4 h-4 text-red-400" />
+              Proximity Events
+              <span className="ml-auto text-xs bg-red-500/20 text-red-400 px-2 py-0.5 rounded-full">
+                {proximityEvents.length}
+              </span>
+            </h3>
+          </div>
+          <div className="flex-1 overflow-y-auto p-2 space-y-2 scrollbar-thin scrollbar-thumb-cyan-500/20 scrollbar-track-transparent">
+            {proximityEvents.map((ev, i) => (
+              <button 
+                key={i}
+                onClick={() => handleEventClick(ev)}
+                className={clsx(
+                  "w-full text-left p-3 rounded-lg transition-all group border",
+                  Math.abs(currentTime - ev.timestamp) < 30
+                    ? "bg-red-500/20 border-red-500/40"
+                    : "bg-black/40 border-white/5 hover:bg-white/5 hover:border-cyan-500/30"
+                )}
+              >
+                <div className="flex items-center justify-between mb-1">
+                  <span className="text-[10px] font-bold uppercase px-1.5 py-0.5 rounded bg-red-500/20 text-red-300">
+                    PROXIMITY
+                  </span>
+                  <span className="font-mono text-[10px] text-white/40">
+                    {formatTime(ev.timestamp)}
+                  </span>
+                </div>
+                <p className="text-xs text-white/80 line-clamp-2 mb-2">{ev.description}</p>
+                <div className="flex items-center gap-1 text-[10px] text-cyan-400 opacity-0 group-hover:opacity-100 transition-opacity">
+                  <MapPin className="w-3 h-3" />
+                  Jump to event
+                </div>
+              </button>
+            ))}
+          </div>
         </div>
-        <button
-          onClick={onClose}
-          className="bg-red-600/80 hover:bg-red-500 text-white p-2.5 rounded-full transition-all shadow-lg border border-red-500/50"
-        >
-          <X className="w-5 h-5" />
-        </button>
-      </div>
+      )}
 
-      {/* Controls Panel */}
-      <div className="absolute bottom-0 left-0 right-0 bg-gradient-to-t from-black via-black/95 to-transparent p-6 z-10">
+      {/* Main 3D View Area */}
+      <div className="flex-1 relative">
+        {/* 3D Canvas */}
+        <Canvas
+          camera={{ position: [30, 40, 50], fov: 60, near: 0.1, far: 1000 }}
+          gl={{ antialias: true, alpha: false }}
+        >
+          <Scene 
+            flight={flight} 
+            currentTime={currentTime}
+            minTime={minTime}
+            maxTime={maxTime}
+          />
+        </Canvas>
+
+        {/* Telemetry HUD */}
+        <TelemetryHUD flight={flight} currentTime={currentTime} />
+
+        {/* Header with close button */}
+        <div className="absolute top-4 right-4 flex items-center gap-3 z-10">
+          <div className="bg-black/80 backdrop-blur-md border border-cyan-500/30 rounded-lg px-4 py-2 flex items-center gap-2">
+            <Box className="w-4 h-4 text-cyan-400" />
+            <span className="text-cyan-400 font-mono text-sm">3D FLIGHT REPLAY</span>
+          </div>
+          <button
+            onClick={onClose}
+            className="bg-red-600/80 hover:bg-red-500 text-white p-2.5 rounded-full transition-all shadow-lg border border-red-500/50"
+          >
+            <X className="w-5 h-5" />
+          </button>
+        </div>
+
+        {/* Controls Panel */}
+        <div className="absolute bottom-0 left-0 right-0 bg-gradient-to-t from-black via-black/95 to-transparent p-6 z-10">
         {/* Time Slider */}
         <div className="flex items-center gap-4 mb-4 max-w-4xl mx-auto">
           <span className="text-xs font-mono text-cyan-400 min-w-[80px] text-right">
@@ -672,10 +738,11 @@ export function Flight3DReplay({ flightId, onClose }: Flight3DReplayProps) {
         </div>
       </div>
 
-      {/* Instructions overlay */}
-      <div className="absolute bottom-32 left-4 text-white/40 text-xs space-y-1 z-10">
-        <div>🖱️ Drag to rotate • Scroll to zoom</div>
-        <div>⌨️ Press Space to play/pause</div>
+        {/* Instructions overlay */}
+        <div className="absolute bottom-32 left-4 text-white/40 text-xs space-y-1 z-10">
+          <div>🖱️ Drag to rotate • Scroll to zoom</div>
+          <div>⌨️ Press Space to play/pause</div>
+        </div>
       </div>
     </div>
   );

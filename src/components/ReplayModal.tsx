@@ -654,6 +654,7 @@ export function ReplayModal({ mainFlightId, secondaryFlightIds = [], events = []
     return (
       <Flight3DReplay
         flightId={mainFlightId}
+        events={events}
         onClose={() => setShow3DView(false)}
       />
     );
