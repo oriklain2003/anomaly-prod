@@ -46,6 +46,8 @@ function createLiveFlightMarkerElement(
   callsign: string,
   heading: number,
   isAnomaly: boolean,
+  isMilitary?: boolean,
+  category?: string | null,
   onClick?: () => void
 ): HTMLElement {
   const el = document.createElement('div');
@@ -57,10 +59,38 @@ function createLiveFlightMarkerElement(
   el.style.width = '0';
   el.style.height = '0';
 
-  const color = isAnomaly ? '#ef4444' : '#60a5fa';
-  const glowColor = isAnomaly ? 'rgba(239, 68, 68, 0.6)' : 'rgba(96, 165, 250, 0.6)';
-  const borderColor = isAnomaly ? 'rgba(239, 68, 68, 0.3)' : 'rgba(96, 165, 250, 0.3)';
-  const textColor = isAnomaly ? '#fca5a5' : '#93c5fd';
+  // Determine color based on flight type:
+  // - Military flights: orange (if category contains "military" OR no category and is_military flag)
+  // - Anomaly flights: red  
+  // - Normal flights: blue
+  let color: string;
+  let glowColor: string;
+  let borderColor: string;
+  let textColor: string;
+  
+  // Check if military: category contains "military" OR (no category AND is_military flag)
+  const categoryLower = (category || '').toLowerCase();
+  const showAsMilitary = categoryLower.includes('military') || (!category && isMilitary);
+  
+  if (showAsMilitary) {
+    // Military/government flights - orange
+    color = '#f97316';
+    glowColor = 'rgba(249, 115, 22, 0.6)';
+    borderColor = 'rgba(249, 115, 22, 0.3)';
+    textColor = '#fdba74';
+  } else if (isAnomaly) {
+    // Anomaly flights - red
+    color = '#ef4444';
+    glowColor = 'rgba(239, 68, 68, 0.6)';
+    borderColor = 'rgba(239, 68, 68, 0.3)';
+    textColor = '#fca5a5';
+  } else {
+    // Normal flights - blue
+    color = '#60a5fa';
+    glowColor = 'rgba(96, 165, 250, 0.6)';
+    borderColor = 'rgba(96, 165, 250, 0.3)';
+    textColor = '#93c5fd';
+  }
 
   // Heading adjustment: Material Symbols 'flight' icon points up (0°/North),
   // Aviation headings are clockwise from north, so we use heading directly
@@ -935,8 +965,10 @@ export function MapComponent({ onMouseMove: _onMouseMove, selectedFlight, active
           if (heading < 0) heading += 360;
         }
         const isAnomaly = selectedFlight?.report?.is_anomaly || false;
+        const isMilitary = selectedFlight?.report?.full_report?.summary?.is_military || false;
+        const category = selectedFlight?.report?.full_report?.summary?.category || selectedFlight?.report?.category || null;
         endMarkerRef.current = new maplibregl.Marker({
-          element: createLiveFlightMarkerElement(callsign || '', heading, isAnomaly),
+          element: createLiveFlightMarkerElement(callsign || '', heading, isAnomaly, isMilitary, category),
           anchor: 'center',
         })
           .setLngLat([endPoint.lon, endPoint.lat])
@@ -1241,6 +1273,8 @@ export function MapComponent({ onMouseMove: _onMouseMove, selectedFlight, active
           callsign,
           flight.heading || 0,
           flight.is_anomaly,
+          flight.is_military,
+          flight.category,
           onFlightClick ? () => onFlightClick(flight.flight_id, flight.is_anomaly, callsign, flight.origin || undefined, flight.destination || undefined) : undefined
         );
         const oldElement = existingMarker.getElement();
@@ -1251,6 +1285,8 @@ export function MapComponent({ onMouseMove: _onMouseMove, selectedFlight, active
           callsign,
           flight.heading || 0,
           flight.is_anomaly,
+          flight.is_military,
+          flight.category,
           onFlightClick ? () => onFlightClick(flight.flight_id, flight.is_anomaly, callsign, flight.origin || undefined, flight.destination || undefined) : undefined
         );
 

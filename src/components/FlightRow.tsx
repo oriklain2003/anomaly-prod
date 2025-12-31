@@ -120,7 +120,19 @@ export function FlightRow({
   const scoreColor = getScoreColor(baseScore);
   
   // Check if this is a medium priority flight (noisy callsigns)
-  const isMediumPriority = isMediumPriorityCallsign(report.callsign);
+  let isMediumPriority = isMediumPriorityCallsign(report.callsign);
+  if (!isMediumPriority) {
+    isMediumPriority = report.is_military == true;
+  }
+  console.log('klainnn', report);
+  // Check if this is a military flight (should show orange instead of red)
+  // Logic: If category exists and contains "military", it's military
+  //        If category is empty AND is_military flag is set, it's military
+  // Check multiple sources: top-level report fields (from API), full_report.summary, and metadata
+  const category = report.category || report.full_report?.summary?.category || metadata?.category || '';
+  const isMilitaryFlag = report.is_military || report.full_report?.summary?.is_military || metadata?.is_military || false;
+  const categoryLower = category.toLowerCase();
+  const isMilitary = categoryLower.includes('military') || (!category && isMilitaryFlag);
 
   // Get origin/destination from report metadata if available
   const origin = report.origin_airport || report.full_report?.summary?.origin || '---';
@@ -186,7 +198,7 @@ export function FlightRow({
       >
         {/* Left: Indicator + Callsign (col-span-4) */}
         <div className="col-span-4 flex items-center gap-2">
-          {/* Glowing plane icon - red for anomaly, blue for normal */}
+          {/* Glowing plane icon - orange for military, red for anomaly, blue for normal */}
           <div className={clsx(
             "relative shrink-0 transition-all duration-300",
             isSelected && "scale-125"
@@ -194,6 +206,7 @@ export function FlightRow({
             {/* Glow effect behind the plane */}
             <div className={clsx(
               "absolute inset-0 rounded-full blur-md opacity-60",
+              isMilitary ? "bg-orange-500" :
               baseScore >= 50 
                 ? (isMediumPriority ? "bg-yellow-500" : "bg-red-500") 
                 : "bg-cyan-500",
@@ -208,11 +221,13 @@ export function FlightRow({
                   : "text-cyan-400"
               )}
               style={{
-                filter: baseScore >= 50 
-                  ? (isMediumPriority 
-                      ? 'drop-shadow(0 0 6px rgba(250, 204, 21, 0.8)) drop-shadow(0 0 12px rgba(250, 204, 21, 0.5))'
-                      : 'drop-shadow(0 0 6px rgba(239, 68, 68, 0.8)) drop-shadow(0 0 12px rgba(239, 68, 68, 0.5))')
-                  : 'drop-shadow(0 0 6px rgba(6, 182, 212, 0.8)) drop-shadow(0 0 12px rgba(6, 182, 212, 0.5))'
+                filter: isMilitary
+                  ? 'drop-shadow(0 0 6px rgba(249, 115, 22, 0.8)) drop-shadow(0 0 12px rgba(249, 115, 22, 0.5))'
+                  : baseScore >= 50 
+                    ? (isMediumPriority 
+                        ? 'drop-shadow(0 0 6px rgba(250, 204, 21, 0.8)) drop-shadow(0 0 12px rgba(250, 204, 21, 0.5))'
+                        : 'drop-shadow(0 0 6px rgba(239, 68, 68, 0.8)) drop-shadow(0 0 12px rgba(239, 68, 68, 0.5))')
+                    : 'drop-shadow(0 0 6px rgba(6, 182, 212, 0.8)) drop-shadow(0 0 12px rgba(6, 182, 212, 0.5))'
               }}
               fill="currentColor"
             />

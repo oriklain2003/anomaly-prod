@@ -336,13 +336,22 @@ export function MapArea({ selectedFlight, mode = 'history', onFlightClick, highl
                 const airline = report?.airline || summary?.airline || '---';
                 
                 // Get category from multiple sources (report top-level > summary)
-                const category = report?.category || summary?.category || '---';
+                const category = report?.category || summary?.category || '';
                 
                 // Get aircraft registration (report top-level > summary)
                 const registration = report?.aircraft_registration || summary?.aircraft_registration || '---';
                 
                 // Get is_military flag (report top-level > summary)
-                const isMilitary = report?.is_military || summary?.is_military || false;
+                const isMilitaryFlag = report?.is_military || summary?.is_military || false;
+                
+                // Determine if this is a military flight for display purposes:
+                // - If category exists and contains "military" (case insensitive), it's military
+                // - If category is empty/missing AND is_military flag is set, show "Military"
+                const categoryLower = category.toLowerCase();
+                const isMilitaryCategory = categoryLower.includes('military');
+                const showAsMilitary = isMilitaryCategory || (!category && isMilitaryFlag);
+                console.log('category', selectedFlight);
+                const displayCategory = category || (isMilitaryFlag ? 'Military' : '---');
                 
                 // Use pre-computed values from metadata (report top-level > summary > calculated)
                 const metaMaxAlt = report?.max_altitude_ft || summary?.max_altitude_ft;
@@ -374,8 +383,8 @@ export function MapArea({ selectedFlight, mode = 'history', onFlightClick, highl
                         </div>
                         <div className="flex items-center justify-between">
                           <span className="text-gray-500">Category:</span>
-                          <span className={clsx("font-mono", isMilitary ? "text-orange-400" : "text-white")}>
-                            {isMilitary ? 'Military' : category}
+                          <span className={clsx("font-mono", showAsMilitary ? "text-orange-400" : "text-white")}>
+                            {displayCategory}
                           </span>
                         </div>
                         <div className="flex items-center justify-between">
@@ -605,8 +614,15 @@ export function MapArea({ selectedFlight, mode = 'history', onFlightClick, highl
                 
                 // Use metadata values
                 const airline = metadata?.airline || '---';
-                const category = metadata?.category || '---';
-                const isMilitary = metadata?.is_military || false;
+                const proxCategory = metadata?.category || '';
+                const proxIsMilitaryFlag = metadata?.is_military || false;
+                
+                // Same logic: show category if available, only show "Military" if no category and is_military flag set
+                const proxCategoryLower = proxCategory.toLowerCase();
+                const proxIsMilitaryCategory = proxCategoryLower.includes('military');
+                const proxShowAsMilitary = proxIsMilitaryCategory || (!proxCategory && proxIsMilitaryFlag);
+                const proxDisplayCategory = proxCategory || (proxIsMilitaryFlag ? 'Military' : '---');
+                
                 const metaMaxAlt = metadata?.max_altitude_ft;
                 const metaTotalDistance = metadata?.total_distance_nm;
                 const metaAvgSpeed = metadata?.avg_speed_kts;
@@ -621,8 +637,8 @@ export function MapArea({ selectedFlight, mode = 'history', onFlightClick, highl
                       </div>
                       <div className="flex justify-between">
                         <span className="text-gray-500">Category:</span>
-                        <span className={clsx("font-mono", isMilitary ? "text-orange-400" : "text-white")}>
-                          {isMilitary ? 'Military' : category}
+                        <span className={clsx("font-mono", proxShowAsMilitary ? "text-orange-400" : "text-white")}>
+                          {proxDisplayCategory}
                         </span>
                       </div>
                       <div className="flex justify-between">

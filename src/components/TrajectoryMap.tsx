@@ -46,11 +46,46 @@ function haversineDistance(lat1: number, lon1: number, lat2: number, lon2: numbe
   return R * c;
 }
 
-// Get traffic position at a given time
+// Get traffic position at a given time (or interpolate along path for visualization)
 function getTrafficPositionAtTime(
   flightPath: FlightPath,
-  currentTime: Date
+  currentTime: Date,
+  replayProgress?: number // 0-1 progress through trajectory for visualization
 ): { lat: number; lon: number; alt: number; phase: string } | null {
+  if (!flightPath.path_points || flightPath.path_points.length === 0) {
+    return null;
+  }
+
+  // If replayProgress is provided, use it to show flights along their paths
+  // This is for visualization purposes - shows all flights moving during replay
+  if (replayProgress !== undefined) {
+    // Each flight animates along its path during the replay
+    // Use a different phase offset based on flight number hash for variety
+    const hash = flightPath.flight_number.split('').reduce((a, b) => a + b.charCodeAt(0), 0);
+    const phaseOffset = (hash % 100) / 100; // 0-1 offset
+    
+    // Calculate position along path with offset
+    let progress = (replayProgress + phaseOffset) % 1;
+    
+    // For arrivals, reverse the direction
+    if (flightPath.flight_type === 'arrival') {
+      progress = 1 - progress;
+    }
+    
+    const pathIndex = Math.floor(progress * (flightPath.path_points.length - 1));
+    const point = flightPath.path_points[Math.min(pathIndex, flightPath.path_points.length - 1)];
+    
+    const phase = point.alt < 500 ? 'ground' : 
+                  flightPath.flight_type === 'departure' ? 'climb' : 'descent';
+    return {
+      lat: point.lat,
+      lon: point.lon,
+      alt: point.alt,
+      phase
+    };
+  }
+
+  // Original time-based logic for actual conflict detection
   const scheduledTime = new Date(flightPath.scheduled_time);
   const timeDiffMin = (currentTime.getTime() - scheduledTime.getTime()) / 60000;
   
@@ -747,7 +782,7 @@ export function TrajectoryMap({
 
   // Update traffic markers during replay
   useEffect(() => {
-    if (!map.current || !isMapReady || !isReplayMode || trajectory.length === 0) {
+    if (!map.current || !isMapReady || !isReplayModeActive || trajectory.length === 0) {
       // Remove all traffic markers when not in replay mode
       trafficMarkersRef.current.forEach(m => m.remove());
       trafficMarkersRef.current = [];
@@ -755,7 +790,7 @@ export function TrajectoryMap({
     }
 
     const currentPoint = trajectory[Math.min(currentTimeIndex, trajectory.length - 1)];
-    if (!currentPoint || !trajectoryStartTime) return;
+    if (!currentPoint) return;
 
     const currentTime = new Date(currentPoint.timestamp);
 
@@ -763,11 +798,16 @@ export function TrajectoryMap({
     trafficMarkersRef.current.forEach(m => m.remove());
     trafficMarkersRef.current = [];
 
-    // Only show time-relevant flights
-    const relevantFlights = flightPaths.filter(fp => fp.is_time_relevant);
+    // Show all flights that have path points (not just time-relevant)
+    // This lets users see all traffic during replay
+    const relevantFlights = flightPaths.filter(fp => fp.path_points && fp.path_points.length > 0);
+    
+    // Calculate replay progress (0-1)
+    const replayProgress = currentTimeIndex / Math.max(trajectory.length - 1, 1);
 
     for (const flight of relevantFlights) {
-      const pos = getTrafficPositionAtTime(flight, currentTime);
+      // Pass replay progress to animate flights along their paths
+      const pos = getTrafficPositionAtTime(flight, currentTime, replayProgress);
       if (!pos || pos.phase === 'ground') continue;
 
       // Calculate distance to our position
@@ -860,10 +900,11 @@ export function TrajectoryMap({
     : null;
 
   // Calculate nearby traffic count
-  const nearbyTrafficCount = isReplayModeActive && currentReplayPoint && trajectoryStartTime
+  const replayProgressForCount = currentTimeIndex / Math.max(trajectory.length - 1, 1);
+  const nearbyTrafficCount = isReplayModeActive && currentReplayPoint
     ? flightPaths.filter(fp => {
-        if (!fp.is_time_relevant) return false;
-        const pos = getTrafficPositionAtTime(fp, new Date(currentReplayPoint.timestamp));
+        if (!fp.path_points || fp.path_points.length === 0) return false;
+        const pos = getTrafficPositionAtTime(fp, new Date(currentReplayPoint.timestamp), replayProgressForCount);
         if (!pos || pos.phase === 'ground') return false;
         const hDist = haversineDistance(currentReplayPoint.lat, currentReplayPoint.lon, pos.lat, pos.lon);
         return hDist < horizontalThreshold * 3;
